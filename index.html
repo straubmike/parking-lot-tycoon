@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parking Lot Tycoon</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background: #1a1a1a;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #app-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+        }
+        
+        #game-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        #game-container canvas {
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
+        }
+        
+        .side-panel {
+            position: absolute;
+            top: 0;
+            background: #2a2a2a;
+            border: 1px solid #3a3a3a;
+            width: 250px;
+            height: 100%;
+            padding: 20px;
+            overflow-y: auto;
+            z-index: 10;
+        }
+        
+        #left-panel {
+            left: 0;
+            border-right: 2px solid #3a3a3a;
+        }
+        
+        #right-panel {
+            right: 0;
+            border-left: 2px solid #3a3a3a;
+        }
+        
+        .color-button {
+            width: 100%;
+            height: 40px;
+            margin-bottom: 10px;
+            border: 2px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        
+        .color-button:hover {
+            border-color: #777;
+        }
+        
+        .color-button.selected {
+            border-color: #ffff00;
+            border-width: 3px;
+        }
+        
+        .color-palette-title {
+            color: #fff;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .action-button {
+            width: 100%;
+            height: 40px;
+            margin-bottom: 10px;
+            background-color: #3a3a3a;
+            color: #fff;
+            border: 2px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        
+        .action-button:hover {
+            background-color: #4a4a4a;
+            border-color: #777;
+        }
+        
+        .action-button:active {
+            background-color: #2a2a2a;
+        }
+        
+        .section-title {
+            color: #fff;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <div id="left-panel" class="side-panel">
+            <div class="color-palette-title">Surface Material</div>
+            <button class="color-button" data-color="ffffff" data-name="Concrete" data-description="Good for sidewalks, pedestrians will prefer to walk here. Vehicles can drive on it but prefer if it's only when entering and exiting the lot." style="background-color: #ffffff;"></button>
+            <button class="color-button" data-color="808080" data-name="Gravel" data-description="A step above dirt, but won't win you any awards." style="background-color: #808080;"></button>
+            <button class="color-button" data-color="2a2a2a" data-name="Asphalt" data-description="The preferred surface of vehicles." style="background-color: #2a2a2a;"></button>
+            <button class="color-button" data-color="8b4513" data-name="Dirt" data-description="Vehicles can drive on it, but will negatively effect lot rating." style="background-color: #8b4513;"></button>
+            <button class="color-button" data-color="228b22" data-name="Grass" data-description="Scenic. Vehicles won't drive on grass." style="background-color: #228b22;"></button>
+            
+            <div class="section-title">Lines and Borders</div>
+            <button class="color-button" data-color="ffff00" data-name="Lane Line" data-description="" style="background-color: #ffff00;"></button>
+            <button class="color-button" data-color="808080" data-name="Curb" data-description="" style="background-color: #808080;"></button>
+            <button class="color-button" data-color="ff0000" data-name="Fence" data-description="" style="background-color: #ff0000;"></button>
+            
+            <div class="section-title">Export / Import</div>
+            <button id="export-button" class="action-button">Export Grid</button>
+            <input type="file" id="import-input" accept=".json" style="display: none;">
+            <button id="import-button" class="action-button">Import Grid</button>
+        </div>
+        <div id="game-container"></div>
+        <div id="right-panel" class="side-panel">
+            <div id="selection-info" style="display: none;">
+                <div class="section-title">Selected Surface</div>
+                <div id="selection-color-preview" style="width: 100%; height: 60px; border: 2px solid #555; border-radius: 4px; margin-bottom: 15px;"></div>
+                <div id="selection-name" style="color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 10px;"></div>
+                <div id="selection-description" style="color: #ccc; font-size: 14px; line-height: 1.5;"></div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+
