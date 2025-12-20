@@ -3,8 +3,9 @@ import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { screenToIso, getIsometricTilePoints, isoToScreen } from '@/utils/isometric';
 import { CellData, Ploppable, SpawnerDespawnerPair } from '@/types';
 import { VehicleSystem } from '@/systems/VehicleSystem';
+import { PedestrianSystem } from '@/systems/PedestrianSystem';
 
-export class MenuScene extends Phaser.Scene {
+export class DevModeScene extends Phaser.Scene {
   private gridSize = 10;
   private gridOffsetX = 0;
   private gridOffsetY = 0;
@@ -42,9 +43,11 @@ export class MenuScene extends Phaser.Scene {
   private vehicleSpawnerLabels: Phaser.GameObjects.Text[] = []; // Labels for spawner/despawner emojis
   private vehicleSystem!: VehicleSystem;
   private vehicleGraphics!: Phaser.GameObjects.Graphics;
+  private pedestrianSystem!: PedestrianSystem;
+  private pedestrianGraphics!: Phaser.GameObjects.Graphics;
 
   constructor() {
-    super({ key: 'MenuScene' });
+    super({ key: 'DevModeScene' });
   }
 
   create(): void {
@@ -67,6 +70,8 @@ export class MenuScene extends Phaser.Scene {
     this.railGraphics = this.add.graphics();
     this.railGraphics.setDepth(1.2);
     
+    // Create graphics object for pedestrian rails - drawn on top of vehicle rails
+    
     // Create graphics object for hover highlight (will be updated) - drawn on top of everything
     this.highlightGraphics = this.add.graphics();
     this.highlightGraphics.setDepth(2);
@@ -75,13 +80,25 @@ export class MenuScene extends Phaser.Scene {
     this.vehicleGraphics = this.add.graphics();
     this.vehicleGraphics.setDepth(1.8);
     
-    // Initialize vehicle system
+    // Create graphics object for pedestrians - drawn on top of grid but below highlights
+    this.pedestrianGraphics = this.add.graphics();
+    this.pedestrianGraphics.setDepth(1.85);
+    
+    // Initialize pedestrian system first (needed by vehicle system)
+    this.pedestrianSystem = new PedestrianSystem(
+      (x: number, y: number) => this.getCellData(x, y),
+      this.gridSize,
+      () => this.getPedestrianDestinations()
+    );
+    
+    // Initialize vehicle system (with pedestrian system reference)
     this.vehicleSystem = new VehicleSystem(
       (x: number, y: number) => this.getCellData(x, y),
       () => this.getAllParkingSpots(),
       this.gridSize,
       (startX: number, startY: number, endX: number, endY: number) => 
-        this.doesRailSegmentCrossImpassable(startX, startY, endX, endY)
+        this.doesRailSegmentCrossImpassable(startX, startY, endX, endY),
+      this.pedestrianSystem
     );
     
     // Draw the grid and lines
@@ -100,6 +117,9 @@ export class MenuScene extends Phaser.Scene {
     
     // Set up vehicle spawner button
     this.setupVehicleSpawnerButton();
+    
+    // Set up pedestrian spawner button
+    this.setupPedestrianSpawnerButton();
     
     // Set up permanent button
     this.setupPermanentButton();
@@ -145,6 +165,7 @@ export class MenuScene extends Phaser.Scene {
         this.drawPermanentLabel(x, y);
         this.drawParkingSpotLines(x, y);
         this.drawVehicleSpawnerDespawner(x, y);
+        this.drawPedestrianSpawner(x, y);
       }
     }
   }
@@ -380,6 +401,26 @@ export class MenuScene extends Phaser.Scene {
     this.vehicleSpawnerLabels.push(label);
   }
 
+  private drawPedestrianSpawner(gridX: number, gridY: number): void {
+    const cellData = this.getCellData(gridX, gridY);
+    if (cellData?.ploppable?.type !== 'Pedestrian Spawner') return;
+    
+    // Convert grid coords to screen coords (isometric)
+    const screenX = (gridX - gridY) * (TILE_WIDTH / 2) + this.gridOffsetX;
+    const screenY = (gridX + gridY) * (TILE_HEIGHT / 2) + this.gridOffsetY;
+    
+    // Create emoji label
+    const label = this.add.text(screenX, screenY, '🚶', {
+      fontSize: '24px',
+    });
+    
+    // Center the text
+    label.setOrigin(0.5, 0.5);
+    label.setDepth(3); // Draw on top of grid
+    
+    this.vehicleSpawnerLabels.push(label); // Reuse the same array for simplicity
+  }
+
   private paintCell(gridX: number, gridY: number): void {
     // Check bounds
     if (gridX < 0 || gridX >= this.gridSize || gridY < 0 || gridY >= this.gridSize) return;
@@ -506,6 +547,11 @@ export class MenuScene extends Phaser.Scene {
       
       // Store in cell data
       this.setCellData(gridX, gridY, { ploppable });
+      
+      // If this is a pedestrian spawner, register it with the pedestrian system
+      if (this.selectedPloppableType === 'Pedestrian Spawner') {
+        this.pedestrianSystem.addDestination(gridX, gridY);
+      }
       
       // Redraw grid to show parking spot lines and ploppable label
       this.drawGrid();
@@ -908,6 +954,12 @@ export class MenuScene extends Phaser.Scene {
             vehicleButton.classList.remove('selected');
           }
           
+          // Clear pedestrian spawner selection
+          const pedestrianButton = document.getElementById('pedestrian-spawner-button');
+          if (pedestrianButton) {
+            pedestrianButton.classList.remove('selected');
+          }
+          
           // Get color from data attribute and convert to hex number
           const colorHex = button.getAttribute('data-color');
           if (colorHex) {
@@ -964,6 +1016,12 @@ export class MenuScene extends Phaser.Scene {
             vehicleButton.classList.remove('selected');
           }
           
+          // Clear pedestrian spawner selection
+          const pedestrianButton = document.getElementById('pedestrian-spawner-button');
+          if (pedestrianButton) {
+            pedestrianButton.classList.remove('selected');
+          }
+          
           // Set ploppable type
           this.selectedPloppableType = button.getAttribute('data-name') || null;
           
@@ -1018,12 +1076,16 @@ export class MenuScene extends Phaser.Scene {
         
         // Build description with orientation info
         let description = '';
-        const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
-        if (button) {
-          description = button.getAttribute('data-description') || '';
-        }
-        if (this.selectedPloppableType === 'Parking Spot') {
-          description += '\n\nUse Q and E keys to rotate orientation.';
+        if (this.selectedPloppableType === 'Pedestrian Spawner') {
+          description = 'Click a cell to place a pedestrian spawner (🚶). Pedestrians will spawn here and wander randomly on the pedestrian rail grid.';
+        } else {
+          const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
+          if (button) {
+            description = button.getAttribute('data-description') || '';
+          }
+          if (this.selectedPloppableType === 'Parking Spot') {
+            description += '\n\nUse Q and E keys to rotate orientation.';
+          }
         }
         selectionDescription.textContent = description;
         
@@ -1179,6 +1241,8 @@ export class MenuScene extends Phaser.Scene {
       if (success) {
         // Rebuild spawner-despawner pairs from loaded cell data
         this.rebuildSpawnerDespawnerPairs();
+        // Rebuild pedestrian spawners from loaded cell data
+        this.rebuildPedestrianSpawners();
         this.drawGrid(); // Redraw with imported data
         this.drawLines(); // Redraw lines
         this.drawRails(); // Redraw rails
@@ -1188,6 +1252,56 @@ export class MenuScene extends Phaser.Scene {
       }
     };
     reader.readAsText(file);
+  }
+
+  private setupPedestrianSpawnerButton(): void {
+    this.time.delayedCall(100, () => {
+      const pedestrianButton = document.getElementById('pedestrian-spawner-button');
+      
+      if (pedestrianButton) {
+        pedestrianButton.addEventListener('click', () => {
+          // Toggle pedestrian spawner selection (treats it as a ploppable)
+          if (this.selectedPloppableType === 'Pedestrian Spawner') {
+            // Deselect
+            this.selectedPloppableType = null;
+            pedestrianButton.classList.remove('selected');
+          } else {
+            // Select pedestrian spawner
+            this.selectedPloppableType = 'Pedestrian Spawner';
+            pedestrianButton.classList.add('selected');
+            
+            // Clear other selections
+            this.selectedColor = null;
+            this.selectedColorName = null;
+            this.selectedColorDescription = null;
+            this.isLineMode = false;
+            this.isVehicleSpawnerMode = false;
+            this.pendingSpawnerCell = null;
+            this.isPermanentMode = false;
+            
+            // Clear button selections
+            document.querySelectorAll('.color-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            document.querySelectorAll('.ploppable-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            const vehicleButton = document.getElementById('vehicle-spawner-button');
+            if (vehicleButton) {
+              vehicleButton.classList.remove('selected');
+            }
+            const permanentButton = document.getElementById('permanent-button');
+            if (permanentButton) {
+              permanentButton.classList.remove('selected');
+              permanentButton.textContent = 'Mark Permanent';
+            }
+          }
+          
+          this.clearHighlight();
+          this.updateSelectionInfo();
+        });
+      }
+    });
   }
 
   private setupVehicleSpawnerButton(): void {
@@ -1319,8 +1433,32 @@ export class MenuScene extends Phaser.Scene {
     // Update vehicle system
     this.vehicleSystem.update(delta, this.gridSize, this.gridOffsetX, this.gridOffsetY);
     
+    // Update pedestrian system
+    this.pedestrianSystem.update(delta, this.gridSize, this.gridOffsetX, this.gridOffsetY);
+    
     // Draw vehicles
     this.drawVehicles();
+    
+    // Draw pedestrians
+    this.drawPedestrians();
+  }
+
+  /**
+   * Rebuild pedestrian spawners from cell data
+   */
+  private rebuildPedestrianSpawners(): void {
+    // Clear existing pedestrian spawners
+    this.pedestrianSystem.clearPedestrians();
+    
+    // Find all pedestrian spawners
+    for (let x = 0; x < this.gridSize; x++) {
+      for (let y = 0; y < this.gridSize; y++) {
+        const cellData = this.getCellData(x, y);
+        if (cellData?.ploppable?.type === 'Pedestrian Spawner') {
+          this.pedestrianSystem.addDestination(x, y);
+        }
+      }
+    }
   }
 
   /**
@@ -1384,6 +1522,19 @@ export class MenuScene extends Phaser.Scene {
   /**
    * Get all parking spots from the grid
    */
+  private getPedestrianDestinations(): { x: number; y: number }[] {
+    const destinations: { x: number; y: number }[] = [];
+    for (let x = 0; x < this.gridSize; x++) {
+      for (let y = 0; y < this.gridSize; y++) {
+        const cellData = this.getCellData(x, y);
+        if (cellData?.ploppable?.type === 'Pedestrian Spawner') {
+          destinations.push({ x, y });
+        }
+      }
+    }
+    return destinations;
+  }
+
   private getAllParkingSpots(): Ploppable[] {
     const parkingSpots: Ploppable[] = [];
     
@@ -1590,6 +1741,7 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
+
   private drawVehicles(): void {
     this.vehicleGraphics.clear();
     
@@ -1614,6 +1766,61 @@ export class MenuScene extends Phaser.Scene {
       this.vehicleGraphics.lineTo(screenX - halfWidth, screenY); // Left
       this.vehicleGraphics.closePath();
       this.vehicleGraphics.fillPath();
+    });
+  }
+
+
+  private drawPedestrians(): void {
+    this.pedestrianGraphics.clear();
+    
+    const pedestrians = this.pedestrianSystem.getActivePedestrians();
+    
+    pedestrians.forEach(pedestrian => {
+      // Draw blue upright rectangle (tall and narrow)
+      const width = (TILE_WIDTH / 2) * 0.25; // 25% of tile width (narrower)
+      const height = (TILE_HEIGHT / 2) * 1.0; // 100% of tile height (taller)
+      
+      // Pedestrian position in screen coordinates
+      // This position represents the base midpoint (feet position) on the pedestrian rail
+      const screenX = pedestrian.screenX + this.gridOffsetX;
+      const screenY = pedestrian.screenY + this.gridOffsetY;
+      
+      // Draw upright rectangle with base at the pedestrian's position
+      // The base (bottom) center is at (screenX, screenY) where the feet are
+      this.pedestrianGraphics.fillStyle(0x0000ff, 1); // Blue
+      this.pedestrianGraphics.fillRect(
+        screenX - width / 2,  // Left edge (centered horizontally)
+        screenY - height,      // Top edge (base is at screenY)
+        width,                 // Width
+        height                 // Height
+      );
+      
+      // Draw a small circle at the rail connection point (base of feet)
+      this.pedestrianGraphics.fillStyle(0xffff00, 1); // Yellow dot
+      this.pedestrianGraphics.fillCircle(screenX, screenY, 3); // 3 pixel radius
+      
+      // Draw a larger circle at the destination cell (cell center)
+      // Show destination when going to destination, show vehicle when returning
+      if (pedestrian.state === 'going_to_destination' && pedestrian.destinationX !== undefined && pedestrian.destinationY !== undefined) {
+        const destScreenPos = isoToScreen(pedestrian.destinationX, pedestrian.destinationY);
+        const destScreenX = destScreenPos.x + this.gridOffsetX;
+        const destScreenY = destScreenPos.y + this.gridOffsetY;
+        
+        this.pedestrianGraphics.lineStyle(2, 0xffaa00, 1); // Orange outline
+        this.pedestrianGraphics.fillStyle(0xffaa00, 0.3); // Orange fill with transparency
+        this.pedestrianGraphics.fillCircle(destScreenX, destScreenY, 8); // 8 pixel radius
+        this.pedestrianGraphics.strokeCircle(destScreenX, destScreenY, 8);
+      } else if (pedestrian.state === 'returning_to_vehicle') {
+        // Show vehicle location when returning
+        const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
+        const vehicleScreenX = vehicleScreenPos.x + this.gridOffsetX;
+        const vehicleScreenY = vehicleScreenPos.y + this.gridOffsetY;
+        
+        this.pedestrianGraphics.lineStyle(2, 0x00ff00, 1); // Green outline
+        this.pedestrianGraphics.fillStyle(0x00ff00, 0.3); // Green fill with transparency
+        this.pedestrianGraphics.fillCircle(vehicleScreenX, vehicleScreenY, 8); // 8 pixel radius
+        this.pedestrianGraphics.strokeCircle(vehicleScreenX, vehicleScreenY, 8);
+      }
     });
   }
 }

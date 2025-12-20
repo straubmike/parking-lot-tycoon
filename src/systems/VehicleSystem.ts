@@ -2,6 +2,7 @@ import { Vehicle, SpawnerDespawnerPair, CellData, Ploppable } from '@/types';
 import { VehicleEntity } from '@/entities/Vehicle';
 import { isoToScreen } from '@/utils/isometric';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
+import { PedestrianSystem } from './PedestrianSystem';
 
 export class VehicleSystem {
   private vehicles: VehicleEntity[] = [];
@@ -17,17 +18,20 @@ export class VehicleSystem {
   private getParkingSpots: () => Ploppable[];
   private gridSize: number;
   private checkRailSegment: (startX: number, startY: number, endX: number, endY: number) => boolean;
+  private pedestrianSystem?: PedestrianSystem; // Optional pedestrian system
 
   constructor(
     getCellData: (x: number, y: number) => CellData | undefined,
     getParkingSpots: () => Ploppable[],
     gridSize: number,
-    checkRailSegment: (startX: number, startY: number, endX: number, endY: number) => boolean
+    checkRailSegment: (startX: number, startY: number, endX: number, endY: number) => boolean,
+    pedestrianSystem?: PedestrianSystem
   ) {
     this.getCellData = getCellData;
     this.getParkingSpots = getParkingSpots;
     this.gridSize = gridSize;
     this.checkRailSegment = checkRailSegment;
+    this.pedestrianSystem = pedestrianSystem;
   }
 
   /**
@@ -402,30 +406,72 @@ export class VehicleSystem {
           }
         }
       } else if (vehicle.state === 'parking') {
+        // Check if pedestrian has been spawned (only spawn once when entering parking state)
+        if (this.pedestrianSystem) {
+          const existingPedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
+          if (!existingPedestrian && vehicle.parkingTimer === vehicle.parkingDuration) {
+            // Just started parking and no pedestrian exists - spawn pedestrian
+            this.pedestrianSystem.spawnPedestrianFromVehicle(
+              vehicle.id,
+              vehicle.x,
+              vehicle.y
+            );
+          }
+        }
+        
         // Update parking timer
         if (vehicle.parkingTimer !== undefined) {
           vehicle.parkingTimer -= delta;
           
           if (vehicle.parkingTimer <= 0) {
-            // Parking time is up, unreserve spot and path to despawner
-            if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
-              this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
+            // Parking time is up, but check if pedestrian has returned
+            if (this.pedestrianSystem) {
+              const pedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
+              
+              // Only allow vehicle to leave if pedestrian is at vehicle (despawned at vehicle)
+              if (pedestrian && pedestrian.state === 'at_vehicle') {
+                // Pedestrian has returned, vehicle can leave
+                if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
+                  this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
+                }
+                
+                // Create path to despawner
+                const pathToDespawner = this.findPath(
+                  vehicle.x,
+                  vehicle.y,
+                  vehicle.despawnerX,
+                  vehicle.despawnerY,
+                  gridSize
+                );
+                
+                vehicle.path = pathToDespawner;
+                vehicle.currentPathIndex = 0;
+                vehicle.state = 'leaving';
+                vehicle.reservedSpotX = undefined;
+                vehicle.reservedSpotY = undefined;
+              }
+              // If pedestrian hasn't returned yet, vehicle waits (parking timer stays at 0)
+            } else {
+              // No pedestrian system, vehicle can leave immediately
+              if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
+                this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
+              }
+              
+              // Create path to despawner
+              const pathToDespawner = this.findPath(
+                vehicle.x,
+                vehicle.y,
+                vehicle.despawnerX,
+                vehicle.despawnerY,
+                gridSize
+              );
+              
+              vehicle.path = pathToDespawner;
+              vehicle.currentPathIndex = 0;
+              vehicle.state = 'leaving';
+              vehicle.reservedSpotX = undefined;
+              vehicle.reservedSpotY = undefined;
             }
-            
-            // Create path to despawner
-            const pathToDespawner = this.findPath(
-              vehicle.x,
-              vehicle.y,
-              vehicle.despawnerX,
-              vehicle.despawnerY,
-              gridSize
-            );
-            
-            vehicle.path = pathToDespawner;
-            vehicle.currentPathIndex = 0;
-            vehicle.state = 'leaving';
-            vehicle.reservedSpotX = undefined;
-            vehicle.reservedSpotY = undefined;
           }
         }
       } else if (vehicle.state === 'leaving') {

@@ -1,0 +1,56 @@
+import { Pedestrian } from '@/types';
+
+export class PedestrianEntity implements Pedestrian {
+  id: string;
+  x: number;
+  y: number;
+  screenX: number;
+  screenY: number;
+  speed: number;
+  path: { x: number; y: number }[];
+  currentPathIndex: number;
+  vehicleId: string;
+  vehicleX: number;
+  vehicleY: number;
+  destinationX?: number;
+  destinationY?: number;
+  state: 'spawning' | 'going_to_destination' | 'at_destination' | 'despawned' | 'respawning' | 'returning_to_vehicle' | 'at_vehicle';
+  respawnTimer?: number;
+  respawnDuration?: number;
+  satisfaction?: number;
+  rating?: number;
+
+  constructor(
+    vehicleId: string,
+    vehicleX: number,
+    vehicleY: number,
+    destinationX: number,
+    destinationY: number,
+    path: { x: number; y: number }[],
+    speed: number,
+    respawnDuration: number
+  ) {
+    this.id = `pedestrian-${Date.now()}-${Math.random()}`;
+    this.vehicleId = vehicleId;
+    this.vehicleX = vehicleX;
+    this.vehicleY = vehicleY;
+    this.destinationX = destinationX;
+    this.destinationY = destinationY;
+    this.path = path;
+    this.currentPathIndex = 0;
+    this.speed = speed;
+    this.state = 'spawning';
+    this.respawnDuration = respawnDuration;
+    this.respawnTimer = respawnDuration;
+    
+    // Initialize personal variables
+    this.satisfaction = 50; // Default satisfaction
+    this.rating = 0; // Will be calculated later
+    
+    // Start at vehicle position
+    this.x = vehicleX;
+    this.y = vehicleY;
+    this.screenX = 0;
+    this.screenY = 0;
+  }
+}

@@ -73,6 +73,28 @@ export interface SpawnerDespawnerPair {
   despawnerY: number;
 }
 
+export interface Pedestrian {
+  id: string;
+  x: number; // Grid X position (cell center, integer)
+  y: number; // Grid Y position (cell center, integer)
+  screenX: number; // Screen X position (for smooth movement)
+  screenY: number; // Screen Y position (for smooth movement)
+  speed: number; // Movement speed (pixels per second)
+  path: { x: number; y: number }[]; // Path on cell grid (integer coordinates)
+  currentPathIndex: number; // Current target in path
+  vehicleId: string; // ID of associated vehicle (driver)
+  vehicleX: number; // Grid X of vehicle (parking spot)
+  vehicleY: number; // Grid Y of vehicle (parking spot)
+  destinationX?: number; // Grid X of destination (spawner/de-respawner)
+  destinationY?: number; // Grid Y of destination (spawner/de-respawner)
+  state: 'spawning' | 'going_to_destination' | 'at_destination' | 'despawned' | 'respawning' | 'returning_to_vehicle' | 'at_vehicle';
+  respawnTimer?: number; // Time remaining before respawn (milliseconds)
+  respawnDuration?: number; // Total time to wait before respawn (milliseconds)
+  // Personal variables for later use (lot rating, satisfaction, etc.)
+  satisfaction?: number; // Satisfaction rating (0-100)
+  rating?: number; // Personal rating contribution
+}
+
 export interface CellData {
   // Visual representation
   color?: number;
