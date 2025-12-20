@@ -60,10 +60,17 @@
             border-left: 2px solid #3a3a3a;
         }
         
-        .color-button {
-            width: 100%;
-            height: 40px;
+        .button-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
             margin-bottom: 10px;
+        }
+        
+        .color-button {
+            flex: 1 1 calc(33.333% - 4px);
+            min-width: 0;
+            height: 40px;
             border: 2px solid #555;
             border-radius: 4px;
             cursor: pointer;
@@ -108,6 +115,11 @@
             background-color: #2a2a2a;
         }
         
+        .action-button.selected {
+            background-color: #4a4a4a;
+            border-color: #ffff00;
+        }
+        
         .section-title {
             color: #fff;
             margin-top: 30px;
@@ -115,22 +127,69 @@
             font-size: 16px;
             font-weight: bold;
         }
+        
+        .ploppables-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .ploppable-button {
+            flex: 1 1 calc(33.333% - 4px);
+            min-width: 0;
+            height: 50px;
+            background-color: #3a3a3a;
+            color: #fff;
+            border: 2px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        
+        .ploppable-button:hover {
+            background-color: #4a4a4a;
+            border-color: #777;
+        }
+        
+        .ploppable-button.selected {
+            background-color: #4a4a4a;
+            border-color: #ffff00;
+            border-width: 3px;
+        }
     </style>
 </head>
 <body>
     <div id="app-container">
         <div id="left-panel" class="side-panel">
             <div class="color-palette-title">Surface Material</div>
-            <button class="color-button" data-color="ffffff" data-name="Concrete" data-description="Good for sidewalks, pedestrians will prefer to walk here. Vehicles can drive on it but prefer if it's only when entering and exiting the lot." style="background-color: #ffffff;"></button>
-            <button class="color-button" data-color="808080" data-name="Gravel" data-description="A step above dirt, but won't win you any awards." style="background-color: #808080;"></button>
-            <button class="color-button" data-color="2a2a2a" data-name="Asphalt" data-description="The preferred surface of vehicles." style="background-color: #2a2a2a;"></button>
-            <button class="color-button" data-color="8b4513" data-name="Dirt" data-description="Vehicles can drive on it, but will negatively effect lot rating." style="background-color: #8b4513;"></button>
-            <button class="color-button" data-color="228b22" data-name="Grass" data-description="Scenic. Vehicles won't drive on grass." style="background-color: #228b22;"></button>
+            <div class="button-container">
+                <button class="color-button" data-color="ffffff" data-name="Concrete" data-description="Good for sidewalks, pedestrians will prefer to walk here. Vehicles can drive on it but prefer if it's only when entering and exiting the lot." style="background-color: #ffffff;"></button>
+                <button class="color-button" data-color="808080" data-name="Gravel" data-description="A step above dirt, but won't win you any awards." style="background-color: #808080;"></button>
+                <button class="color-button" data-color="2a2a2a" data-name="Asphalt" data-description="The preferred surface of vehicles." style="background-color: #2a2a2a;"></button>
+                <button class="color-button" data-color="8b4513" data-name="Dirt" data-description="Vehicles can drive on it, but will negatively effect lot rating." style="background-color: #8b4513;"></button>
+                <button class="color-button" data-color="228b22" data-name="Grass" data-description="Scenic. Vehicles won't drive on grass." style="background-color: #228b22;"></button>
+            </div>
             
             <div class="section-title">Lines and Borders</div>
-            <button class="color-button" data-color="ffff00" data-name="Lane Line" data-description="" style="background-color: #ffff00;"></button>
-            <button class="color-button" data-color="808080" data-name="Curb" data-description="" style="background-color: #808080;"></button>
-            <button class="color-button" data-color="ff0000" data-name="Fence" data-description="" style="background-color: #ff0000;"></button>
+            <div class="button-container">
+                <button class="color-button" data-color="ffff00" data-name="Lane Line" data-description="Vehicles can cross these lines but will always try to drive on the right." style="background-color: #ffff00;"></button>
+                <button class="color-button" data-color="808080" data-name="Curb" data-description="Vehicles cannot cross these lines, but pedestrians can." style="background-color: #808080;"></button>
+                <button class="color-button" data-color="ff0000" data-name="Fence" data-description="Neither vehicles nor pedestrians can cross these." style="background-color: #ff0000;"></button>
+            </div>
+            
+            <div class="section-title">Ploppables</div>
+            <div class="ploppables-container">
+                <button class="ploppable-button" data-name="Parking Spot" data-description="Every lot needs one, right?">🅿️</button>
+            </div>
+            
+            <div class="section-title">Tools</div>
+            <button id="vehicle-spawner-button" class="action-button">🚗 Vehicle Spawner</button>
+            <button id="permanent-button" class="action-button">Mark Permanent</button>
             
             <div class="section-title">Export / Import</div>
             <button id="export-button" class="action-button">Export Grid</button>
@@ -140,7 +199,7 @@
         <div id="game-container"></div>
         <div id="right-panel" class="side-panel">
             <div id="selection-info" style="display: none;">
-                <div class="section-title">Selected Surface</div>
+                <div class="section-title">Selection Info</div>
                 <div id="selection-color-preview" style="width: 100%; height: 60px; border: 2px solid #555; border-radius: 4px; margin-bottom: 15px;"></div>
                 <div id="selection-name" style="color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 10px;"></div>
                 <div id="selection-description" style="color: #ccc; font-size: 14px; line-height: 1.5;"></div>

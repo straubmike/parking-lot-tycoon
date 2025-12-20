@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
-import { screenToIso, getIsometricTilePoints } from '@/utils/isometric';
-import { CellData } from '@/types';
+import { screenToIso, getIsometricTilePoints, isoToScreen } from '@/utils/isometric';
+import { CellData, Ploppable, SpawnerDespawnerPair } from '@/types';
+import { VehicleSystem } from '@/systems/VehicleSystem';
 
 export class MenuScene extends Phaser.Scene {
   private gridSize = 10;
@@ -18,12 +19,29 @@ export class MenuScene extends Phaser.Scene {
   private readonly zoomStep = 0.1;
   private gridGraphics!: Phaser.GameObjects.Graphics;
   private highlightGraphics!: Phaser.GameObjects.Graphics;
+  private linesGraphics!: Phaser.GameObjects.Graphics;
+  private parkingSpotGraphics!: Phaser.GameObjects.Graphics;
+  private railGraphics!: Phaser.GameObjects.Graphics;
+  private permanentLabels: Phaser.GameObjects.Text[] = [];
   private hoveredCell: { x: number; y: number } | null = null;
+  private hoveredEdge: { cellX: number; cellY: number; edge: number } | null = null;
   private cellData: Map<string, CellData> = new Map(); // Stores all cell data
+  // Border segment: stores cell coordinates, edge index, and color
+  // Key format: `${cellX},${cellY},${edge}`
+  private borderSegments: Map<string, number> = new Map();
   private selectedColor: number | null = null;
   private selectedColorName: string | null = null;
   private selectedColorDescription: string | null = null;
+  private isLineMode: boolean = false;
+  private isPermanentMode: boolean = false;
+  private selectedPloppableType: string | null = null;
+  private ploppableOrientation: number = 0; // 0=north, 1=east, 2=south, 3=west
   private lastPaintedCell: { x: number; y: number } | null = null;
+  private isVehicleSpawnerMode: boolean = false;
+  private pendingSpawnerCell: { x: number; y: number } | null = null; // Cell where spawner was placed, waiting for despawner
+  private vehicleSpawnerLabels: Phaser.GameObjects.Text[] = []; // Labels for spawner/despawner emojis
+  private vehicleSystem!: VehicleSystem;
+  private vehicleGraphics!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super({ key: 'MenuScene' });
@@ -35,16 +53,56 @@ export class MenuScene extends Phaser.Scene {
     
     // Create graphics object for the grid (static)
     this.gridGraphics = this.add.graphics();
-    this.drawGrid();
+    this.gridGraphics.setDepth(0);
     
-    // Create graphics object for hover highlight (will be updated)
+    // Create graphics object for lines (will be updated) - drawn on top of grid
+    this.linesGraphics = this.add.graphics();
+    this.linesGraphics.setDepth(1);
+    
+    // Create graphics object for parking spot lines - drawn on top of grid
+    this.parkingSpotGraphics = this.add.graphics();
+    this.parkingSpotGraphics.setDepth(1.5);
+    
+    // Create graphics object for rails - drawn on top of grid
+    this.railGraphics = this.add.graphics();
+    this.railGraphics.setDepth(1.2);
+    
+    // Create graphics object for hover highlight (will be updated) - drawn on top of everything
     this.highlightGraphics = this.add.graphics();
+    this.highlightGraphics.setDepth(2);
+    
+    // Create graphics object for vehicles - drawn on top of grid but below highlights
+    this.vehicleGraphics = this.add.graphics();
+    this.vehicleGraphics.setDepth(1.8);
+    
+    // Initialize vehicle system
+    this.vehicleSystem = new VehicleSystem(
+      (x: number, y: number) => this.getCellData(x, y),
+      () => this.getAllParkingSpots(),
+      this.gridSize,
+      (startX: number, startY: number, endX: number, endY: number) => 
+        this.doesRailSegmentCrossImpassable(startX, startY, endX, endY)
+    );
+    
+    // Draw the grid and lines
+    this.drawGrid();
+    this.drawLines();
+    this.drawRails();
 
     // Set up camera controls
     this.setupCameraControls();
     
+    // Set up keyboard controls
+    this.setupKeyboardControls();
+    
     // Set up color selection buttons
     this.setupColorButtons();
+    
+    // Set up vehicle spawner button
+    this.setupVehicleSpawnerButton();
+    
+    // Set up permanent button
+    this.setupPermanentButton();
     
     // Set up export/import buttons
     this.setupExportImportButtons();
@@ -70,17 +128,122 @@ export class MenuScene extends Phaser.Scene {
 
   private drawGrid(): void {
     this.gridGraphics.clear();
+    this.parkingSpotGraphics.clear();
+    
+    // Clear existing permanent labels
+    this.permanentLabels.forEach(label => label.destroy());
+    this.permanentLabels = [];
+    
+    // Clear existing vehicle spawner/despawner labels
+    this.vehicleSpawnerLabels.forEach(label => label.destroy());
+    this.vehicleSpawnerLabels = [];
     
     // Draw 10x10 isometric grid
     for (let x = 0; x < this.gridSize; x++) {
       for (let y = 0; y < this.gridSize; y++) {
         this.drawCell(x, y);
+        this.drawPermanentLabel(x, y);
+        this.drawParkingSpotLines(x, y);
+        this.drawVehicleSpawnerDespawner(x, y);
       }
     }
   }
 
   private getCellKey(gridX: number, gridY: number): string {
     return `${gridX},${gridY}`;
+  }
+
+  /**
+   * Get a simple key for a border segment: cell coordinates and edge index
+   * Format: `${cellX},${cellY},${edge}` where edge is 0=top, 1=right, 2=bottom, 3=left
+   */
+  private getBorderSegmentKey(cellX: number, cellY: number, edge: number): string {
+    return `${cellX},${cellY},${edge}`;
+  }
+
+  /**
+   * Get all possible keys for a border segment, since edges are shared between adjacent cells
+   * Returns an array of all possible keys (from current cell and adjacent cell if applicable)
+   */
+  private getAllPossibleBorderSegmentKeys(cellX: number, cellY: number, edge: number): string[] {
+    const allKeys: string[] = [];
+    
+    // Get the current cell's edge key
+    const currentKey = this.getBorderSegmentKey(cellX, cellY, edge);
+    allKeys.push(currentKey);
+    
+    // Check for adjacent cell that shares this edge
+    // Edge relationships in isometric grid (based on actual cell positions):
+    // - Left edge (3) of (x,y) = Right edge (1) of (x-1, y) [horizontal neighbor]
+    // - Right edge (1) of (x,y) = Left edge (3) of (x+1, y) [horizontal neighbor]
+    // - Top edge (0) of (x,y) = Bottom edge (2) of (x-1, y+1) [diagonal neighbor]
+    // - Bottom edge (2) of (x,y) = Top edge (0) of (x+1, y-1) [diagonal neighbor]
+    
+    if (edge === 0) { // top - shared with bottom of (x-1, y+1)
+      const neighborX = cellX - 1;
+      const neighborY = cellY + 1;
+      if (neighborX >= 0 && neighborY < this.gridSize) {
+        allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 2)); // bottom
+      }
+    } else if (edge === 1) { // right - shared with left of (x+1, y) [fixed: horizontal, not diagonal]
+      const neighborX = cellX + 1;
+      const neighborY = cellY;
+      if (neighborX < this.gridSize && neighborY >= 0 && neighborY < this.gridSize) {
+        allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 3)); // left
+      }
+    } else if (edge === 2) { // bottom - shared with top of (x+1, y-1)
+      const neighborX = cellX + 1;
+      const neighborY = cellY - 1;
+      if (neighborX < this.gridSize && neighborY >= 0) {
+        allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 0)); // top
+      }
+    } else if (edge === 3) { // left - shared with right of (x-1, y) [fixed: horizontal, not diagonal]
+      const neighborX = cellX - 1;
+      const neighborY = cellY;
+      if (neighborX >= 0 && neighborY >= 0 && neighborY < this.gridSize) {
+        allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 1)); // right
+      }
+    }
+    
+    return allKeys;
+  }
+
+  /**
+   * Find the existing border segment key for a given edge, checking all possible keys
+   * Returns the key if found, or null if not found
+   */
+  private findExistingBorderSegmentKey(cellX: number, cellY: number, edge: number): string | null {
+    const allKeys = this.getAllPossibleBorderSegmentKeys(cellX, cellY, edge);
+    
+    for (const key of allKeys) {
+      if (this.borderSegments.has(key)) {
+        return key;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Get the screen coordinates for a border segment
+   * Returns the start and end points of the edge in screen space
+   */
+  private getBorderSegmentCoords(cellX: number, cellY: number, edge: number): { startX: number; startY: number; endX: number; endY: number } {
+    const points = getIsometricTilePoints(cellX, cellY);
+    const offsetPoints = points.map(p => ({
+      x: p.x + this.gridOffsetX,
+      y: p.y + this.gridOffsetY
+    }));
+    
+    const startIdx = edge;
+    const endIdx = (edge + 1) % 4;
+    
+    return {
+      startX: offsetPoints[startIdx].x,
+      startY: offsetPoints[startIdx].y,
+      endX: offsetPoints[endIdx].x,
+      endY: offsetPoints[endIdx].y
+    };
   }
 
   private getCellData(gridX: number, gridY: number): CellData | undefined {
@@ -132,28 +295,287 @@ export class MenuScene extends Phaser.Scene {
     this.gridGraphics.lineBetween(leftX, leftY, topX, topY);
   }
 
-  private paintCell(gridX: number, gridY: number): void {
-    if (this.selectedColor === null) return;
+  private drawParkingSpotLines(gridX: number, gridY: number): void {
+    const cellData = this.getCellData(gridX, gridY);
+    if (cellData?.ploppable?.type !== 'Parking Spot') return;
     
+    const orientation = cellData.ploppable.orientation || 0;
+    
+    // Get diamond points
+    const points = getIsometricTilePoints(gridX, gridY);
+    const offsetPoints = points.map(p => ({
+      x: p.x + this.gridOffsetX,
+      y: p.y + this.gridOffsetY
+    }));
+    
+    // Orientation represents which edge is missing (undrawn):
+    // 0 = missing left (edge 3) - draws edges 0,1,2
+    // 1 = missing bottom (edge 2) - draws edges 0,1,3
+    // 2 = missing top (edge 0) - draws edges 1,2,3
+    // 3 = missing right (edge 1) - draws edges 0,2,3
+    const edgesToDraw = [
+      [0, 1, 2], // orientation 0: missing left (3) - draw top, right, bottom
+      [0, 1, 3], // orientation 1: missing bottom (2) - draw top, right, left
+      [1, 2, 3], // orientation 2: missing top (0) - draw right, bottom, left
+      [0, 2, 3]  // orientation 3: missing right (1) - draw top, bottom, left
+    ];
+    
+    const edges = edgesToDraw[orientation];
+    
+    // Draw lines on parkingSpotGraphics so they're above the grid
+    this.parkingSpotGraphics.lineStyle(2, 0xffffff, 1);
+    edges.forEach(edgeIdx => {
+      const startIdx = edgeIdx;
+      const endIdx = (edgeIdx + 1) % 4;
+      this.parkingSpotGraphics.lineBetween(
+        offsetPoints[startIdx].x,
+        offsetPoints[startIdx].y,
+        offsetPoints[endIdx].x,
+        offsetPoints[endIdx].y
+      );
+    });
+  }
+
+  private drawPermanentLabel(gridX: number, gridY: number): void {
+    const cellData = this.getCellData(gridX, gridY);
+    if (!cellData?.isPermanent) return;
+    
+    // Convert grid coords to screen coords (isometric)
+    const screenX = (gridX - gridY) * (TILE_WIDTH / 2) + this.gridOffsetX;
+    const screenY = (gridX + gridY) * (TILE_HEIGHT / 2) + this.gridOffsetY;
+    
+    // Create "P" label
+    const label = this.add.text(screenX, screenY, 'P', {
+      fontSize: '20px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3,
+    });
+    
+    // Center the text
+    label.setOrigin(0.5, 0.5);
+    label.setDepth(3); // Draw on top of grid
+    
+    this.permanentLabels.push(label);
+  }
+
+  private drawVehicleSpawnerDespawner(gridX: number, gridY: number): void {
+    const cellData = this.getCellData(gridX, gridY);
+    if (!cellData?.vehicleSpawner && !cellData?.vehicleDespawner) return;
+    
+    // Convert grid coords to screen coords (isometric)
+    const screenX = (gridX - gridY) * (TILE_WIDTH / 2) + this.gridOffsetX;
+    const screenY = (gridX + gridY) * (TILE_HEIGHT / 2) + this.gridOffsetY;
+    
+    // Create emoji label
+    const emoji = cellData.vehicleSpawner ? '🚗' : '🎯';
+    const label = this.add.text(screenX, screenY, emoji, {
+      fontSize: '24px',
+    });
+    
+    // Center the text
+    label.setOrigin(0.5, 0.5);
+    label.setDepth(3); // Draw on top of grid
+    
+    this.vehicleSpawnerLabels.push(label);
+  }
+
+  private paintCell(gridX: number, gridY: number): void {
     // Check bounds
     if (gridX < 0 || gridX >= this.gridSize || gridY < 0 || gridY >= this.gridSize) return;
     
-    // Check if we already painted this cell (prevent duplicates during drag)
-    if (this.lastPaintedCell && this.lastPaintedCell.x === gridX && this.lastPaintedCell.y === gridY) {
+    // Handle permanent mode (toggle permanent status)
+    if (this.isPermanentMode) {
+      // Check if we already toggled this cell (prevent duplicates during drag)
+      if (this.lastPaintedCell && this.lastPaintedCell.x === gridX && this.lastPaintedCell.y === gridY) {
+        return;
+      }
+      
+      const cellData = this.getCellData(gridX, gridY);
+      const isPermanent = cellData?.isPermanent || false;
+      
+      // Toggle permanent status
+      this.setCellData(gridX, gridY, { isPermanent: !isPermanent });
+      
+      // Redraw the grid to update permanent labels
+      this.drawGrid();
+      this.drawLines();
+      this.drawRails();
+      
+      // Remember last painted cell
+      this.lastPaintedCell = { x: gridX, y: gridY };
       return;
     }
     
-    // Store the color in cell data
-    this.setCellData(gridX, gridY, { color: this.selectedColor });
+    // Handle vehicle spawner/despawner placement
+    if (this.isVehicleSpawnerMode) {
+      // Check if we already placed on this cell (prevent duplicates during drag)
+      if (this.lastPaintedCell && this.lastPaintedCell.x === gridX && this.lastPaintedCell.y === gridY) {
+        return;
+      }
+      
+      const cellData = this.getCellData(gridX, gridY);
+      
+      // If we're waiting for despawner placement
+      if (this.pendingSpawnerCell) {
+        // Check if clicking the same cell as spawner
+        if (this.pendingSpawnerCell.x === gridX && this.pendingSpawnerCell.y === gridY) {
+          return; // Can't place despawner on same cell as spawner
+        }
+        
+        // Check if cell already has a ploppable, spawner, or despawner
+        if (cellData?.ploppable || cellData?.vehicleSpawner || cellData?.vehicleDespawner) {
+          return; // Cell is occupied
+        }
+        
+        // Place despawner
+        this.setCellData(gridX, gridY, { vehicleDespawner: true });
+        
+        // Register spawner-despawner pair with vehicle system
+        const pair: SpawnerDespawnerPair = {
+          spawnerX: this.pendingSpawnerCell.x,
+          spawnerY: this.pendingSpawnerCell.y,
+          despawnerX: gridX,
+          despawnerY: gridY
+        };
+        this.vehicleSystem.addSpawnerDespawnerPair(pair);
+        
+        // Clear pending state and exit spawner mode
+        this.pendingSpawnerCell = null;
+        this.isVehicleSpawnerMode = false;
+        
+        // Update button state
+        const vehicleButton = document.getElementById('vehicle-spawner-button');
+        if (vehicleButton) {
+          vehicleButton.classList.remove('selected');
+        }
+        
+        // Redraw grid
+        this.drawGrid();
+        this.drawLines();
+        this.drawRails();
+        
+        // Remember last painted cell
+        this.lastPaintedCell = { x: gridX, y: gridY };
+        return;
+      } else {
+        // Placing spawner
+        // Check if cell already has a ploppable, spawner, or despawner
+        if (cellData?.ploppable || cellData?.vehicleSpawner || cellData?.vehicleDespawner) {
+          return; // Cell is occupied
+        }
+        
+        // Place spawner
+        this.setCellData(gridX, gridY, { vehicleSpawner: true });
+        this.pendingSpawnerCell = { x: gridX, y: gridY };
+        
+        // Redraw grid
+        this.drawGrid();
+        this.drawLines();
+        this.drawRails();
+        
+        // Remember last painted cell
+        this.lastPaintedCell = { x: gridX, y: gridY };
+        return;
+      }
+    }
     
-    // Redraw the cell
-    this.drawCell(gridX, gridY);
+    // Handle ploppable placement
+    if (this.selectedPloppableType) {
+      // Check if we already placed on this cell (prevent duplicates during drag)
+      if (this.lastPaintedCell && this.lastPaintedCell.x === gridX && this.lastPaintedCell.y === gridY) {
+        return;
+      }
+      
+      // Check if cell already has a ploppable, spawner, or despawner
+      const cellData = this.getCellData(gridX, gridY);
+      if (cellData?.ploppable || cellData?.vehicleSpawner || cellData?.vehicleDespawner) {
+        // Cell already has a ploppable or vehicle entity, don't place another one
+        return;
+      }
+      
+      // Create ploppable
+      const ploppable: Ploppable = {
+        id: `${this.selectedPloppableType}-${gridX}-${gridY}-${Date.now()}`,
+        type: this.selectedPloppableType,
+        x: gridX,
+        y: gridY,
+        cost: 0, // Will be set later
+        orientation: this.ploppableOrientation
+      };
+      
+      // Store in cell data
+      this.setCellData(gridX, gridY, { ploppable });
+      
+      // Redraw grid to show parking spot lines and ploppable label
+      this.drawGrid();
+      this.drawLines();
+      this.drawRails();
+      
+      // Remember last painted cell
+      this.lastPaintedCell = { x: gridX, y: gridY };
+      return;
+    }
     
-    // Remember last painted cell
-    this.lastPaintedCell = { x: gridX, y: gridY };
+    if (this.selectedColor === null) return;
+    
+    if (this.isLineMode && this.hoveredEdge) {
+      const { cellX, cellY, edge } = this.hoveredEdge;
+      
+      // Check if we already toggled this exact edge (prevent duplicates during drag)
+      if (this.lastPaintedCell && 
+          this.lastPaintedCell.x === cellX && 
+          this.lastPaintedCell.y === cellY) {
+        return;
+      }
+      
+      // Use the current cell's key for storage (so coordinates match what user sees)
+      const currentKey = this.getBorderSegmentKey(cellX, cellY, edge);
+      
+      // Find existing key if any (check all possible keys for shared edges)
+      const existingKey = this.findExistingBorderSegmentKey(cellX, cellY, edge);
+      const existingEdgeColor = existingKey ? this.borderSegments.get(existingKey) : undefined;
+      
+      // Toggle logic:
+      // - If a line exists with the selected color, remove it (toggle off)
+      // - Otherwise, add/update the line (toggle on)
+      if (existingKey && existingEdgeColor === this.selectedColor) {
+        // Toggle off: remove the existing line (works regardless of which cell's key it was stored under)
+        this.borderSegments.delete(existingKey);
+      } else {
+        // Toggle on: add or update the line
+        // If there's an existing key with a different color, remove it first (cleanup)
+        if (existingKey && existingKey !== currentKey) {
+          this.borderSegments.delete(existingKey);
+        }
+        
+        // Add/update using current cell's key (matches what user sees)
+        this.borderSegments.set(currentKey, this.selectedColor);
+      }
+      
+      // Redraw lines
+      this.drawLines();
+      
+      // Remember last painted edge
+      this.lastPaintedCell = { x: cellX, y: cellY };
+    } else if (!this.isLineMode) {
+      // Check if we already painted this cell (prevent duplicates during drag)
+      if (this.lastPaintedCell && this.lastPaintedCell.x === gridX && this.lastPaintedCell.y === gridY) {
+        return;
+      }
+      
+      // Store the color in cell data
+      this.setCellData(gridX, gridY, { color: this.selectedColor });
+      
+      // Redraw the cell
+      this.drawCell(gridX, gridY);
+      
+      // Remember last painted cell
+      this.lastPaintedCell = { x: gridX, y: gridY };
+    }
   }
 
-  private drawHighlight(gridX: number, gridY: number): void {
+  private drawHighlight(gridX: number, gridY: number, edge?: number): void {
     this.highlightGraphics.clear();
     
     // Get diamond points for this grid cell
@@ -165,17 +587,98 @@ export class MenuScene extends Phaser.Scene {
       y: p.y + this.gridOffsetY
     }));
     
-    // Draw subtle yellow border (thin and transparent)
-    this.highlightGraphics.lineStyle(1.5, 0xffff00, 0.6);
-    this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
-    this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
-    this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
-    this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+    if (this.selectedPloppableType === 'Parking Spot') {
+      // Draw parking spot preview (3 of 4 borders as white lines)
+      this.highlightGraphics.lineStyle(2, 0xffffff, 1);
+      
+      // Orientation represents which edge is missing (undrawn):
+      // 0 = missing left (edge 3) - draws edges 0,1,2
+      // 1 = missing bottom (edge 2) - draws edges 0,1,3
+      // 2 = missing top (edge 0) - draws edges 1,2,3
+      // 3 = missing right (edge 1) - draws edges 0,2,3
+      const edgesToDraw = [
+        [0, 1, 2], // orientation 0: missing left (3) - draw top, right, bottom
+        [0, 1, 3], // orientation 1: missing bottom (2) - draw top, right, left
+        [1, 2, 3], // orientation 2: missing top (0) - draw right, bottom, left
+        [0, 2, 3]  // orientation 3: missing right (1) - draw top, bottom, left
+      ];
+      
+      const edges = edgesToDraw[this.ploppableOrientation];
+      edges.forEach(edgeIdx => {
+        const startIdx = edgeIdx;
+        const endIdx = (edgeIdx + 1) % 4;
+        this.highlightGraphics.lineBetween(
+          offsetPoints[startIdx].x,
+          offsetPoints[startIdx].y,
+          offsetPoints[endIdx].x,
+          offsetPoints[endIdx].y
+        );
+      });
+    } else if (this.isLineMode && edge !== undefined) {
+      // Draw blue line on the specific edge (same style as yellow highlight)
+      this.highlightGraphics.lineStyle(1.5, 0x0000ff, 0.6);
+      const startIdx = edge;
+      const endIdx = (edge + 1) % 4;
+      this.highlightGraphics.lineBetween(
+        offsetPoints[startIdx].x,
+        offsetPoints[startIdx].y,
+        offsetPoints[endIdx].x,
+        offsetPoints[endIdx].y
+      );
+    } else {
+      // Draw normal yellow border highlight
+      this.highlightGraphics.lineStyle(1.5, 0xffff00, 0.6);
+      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+    }
   }
 
   private clearHighlight(): void {
     this.highlightGraphics.clear();
     this.hoveredCell = null;
+    this.hoveredEdge = null;
+  }
+
+  private drawLines(): void {
+    this.linesGraphics.clear();
+    
+    // Track which segments we've drawn by their actual screen coordinates to avoid duplicates
+    const drawnSegments = new Set<string>();
+    
+    // Iterate through all border segments and draw them
+    this.borderSegments.forEach((color, segmentKey) => {
+      const [cellXStr, cellYStr, edgeStr] = segmentKey.split(',');
+      const cellX = parseInt(cellXStr, 10);
+      const cellY = parseInt(cellYStr, 10);
+      const edge = parseInt(edgeStr, 10);
+      
+      // Get the screen coordinates for this border segment
+      const coords = this.getBorderSegmentCoords(cellX, cellY, edge);
+      
+      // Create a unique key based on the actual line coordinates (rounded to avoid floating point issues)
+      // This handles deduplication when the same edge is stored from adjacent cells
+      const coordKey = `${Math.round(coords.startX)},${Math.round(coords.startY)}-${Math.round(coords.endX)},${Math.round(coords.endY)}`;
+      const reverseCoordKey = `${Math.round(coords.endX)},${Math.round(coords.endY)}-${Math.round(coords.startX)},${Math.round(coords.startY)}`;
+      
+      // Skip if we've already drawn this segment (check both directions)
+      if (drawnSegments.has(coordKey) || drawnSegments.has(reverseCoordKey)) {
+        return;
+      }
+      
+      // Mark as drawn
+      drawnSegments.add(coordKey);
+      
+      // Draw the line segment
+      this.linesGraphics.lineStyle(3, color, 1);
+      this.linesGraphics.lineBetween(
+        coords.startX,
+        coords.startY,
+        coords.endX,
+        coords.endY
+      );
+    });
   }
 
   private getCellAtPointer(pointer: Phaser.Input.Pointer): { x: number; y: number } | null {
@@ -201,6 +704,56 @@ export class MenuScene extends Phaser.Scene {
     return null;
   }
 
+  private getNearestEdge(
+    gridX: number,
+    gridY: number,
+    pointer: Phaser.Input.Pointer
+  ): number {
+    // Get world coordinates relative to cell center
+    const worldX = this.cameras.main.getWorldPoint(pointer.x, pointer.y).x;
+    const worldY = this.cameras.main.getWorldPoint(pointer.x, pointer.y).y;
+    
+    // Get all edge points
+    const points = getIsometricTilePoints(gridX, gridY);
+    const offsetPoints = points.map(p => ({
+      x: p.x + this.gridOffsetX,
+      y: p.y + this.gridOffsetY
+    }));
+    
+    // Calculate distances to each edge
+    const edges = [
+      { idx: 0, name: 'top', p1: offsetPoints[0], p2: offsetPoints[1] },      // 0->1
+      { idx: 1, name: 'right', p1: offsetPoints[1], p2: offsetPoints[2] },   // 1->2
+      { idx: 2, name: 'bottom', p1: offsetPoints[2], p2: offsetPoints[3] },  // 2->3
+      { idx: 3, name: 'left', p1: offsetPoints[3], p2: offsetPoints[0] }     // 3->0
+    ];
+    
+    let minDist = Infinity;
+    let nearestEdge = 0;
+    
+    edges.forEach(edge => {
+      // Calculate distance from point to line segment
+      const dx = edge.p2.x - edge.p1.x;
+      const dy = edge.p2.y - edge.p1.y;
+      const lengthSq = dx * dx + dy * dy;
+      
+      if (lengthSq === 0) return;
+      
+      const t = Math.max(0, Math.min(1, ((worldX - edge.p1.x) * dx + (worldY - edge.p1.y) * dy) / lengthSq));
+      const projX = edge.p1.x + t * dx;
+      const projY = edge.p1.y + t * dy;
+      
+      const dist = Math.sqrt((worldX - projX) ** 2 + (worldY - projY) ** 2);
+      
+      if (dist < minDist) {
+        minDist = dist;
+        nearestEdge = edge.idx;
+      }
+    });
+    
+    return nearestEdge;
+  }
+
   private updateHoverHighlight(pointer: Phaser.Input.Pointer): void {
     // Skip if dragging camera
     if (this.isDragging) {
@@ -210,14 +763,32 @@ export class MenuScene extends Phaser.Scene {
     const cell = this.getCellAtPointer(pointer);
     
     if (cell) {
-      // Check if this is a new hovered cell
+      if (this.isLineMode) {
+        // In line mode, detect which edge
+        const edge = this.getNearestEdge(cell.x, cell.y, pointer);
+        if (!this.hoveredEdge ||
+            this.hoveredEdge.cellX !== cell.x ||
+            this.hoveredEdge.cellY !== cell.y ||
+            this.hoveredEdge.edge !== edge) {
+          this.hoveredEdge = { cellX: cell.x, cellY: cell.y, edge };
+          this.drawHighlight(cell.x, cell.y, edge);
+        }
+    } else if (this.isVehicleSpawnerMode) {
+      // Vehicle spawner/despawner mode - show normal highlight
       if (!this.hoveredCell || this.hoveredCell.x !== cell.x || this.hoveredCell.y !== cell.y) {
         this.hoveredCell = cell;
         this.drawHighlight(cell.x, cell.y);
       }
     } else {
+      // Normal cell highlight or ploppable preview
+      if (!this.hoveredCell || this.hoveredCell.x !== cell.x || this.hoveredCell.y !== cell.y) {
+        this.hoveredCell = cell;
+        this.drawHighlight(cell.x, cell.y);
+      }
+    }
+    } else {
       // Mouse is outside grid bounds
-      if (this.hoveredCell) {
+      if (this.hoveredCell || this.hoveredEdge) {
         this.clearHighlight();
       }
     }
@@ -237,13 +808,23 @@ export class MenuScene extends Phaser.Scene {
         this.cameraStartX = this.cameras.main.scrollX;
         this.cameraStartY = this.cameras.main.scrollY;
       }
-      // Check if left mouse button (button 0) - paint
-      else if (pointer.leftButtonDown() && this.selectedColor !== null) {
+      // Check if left mouse button (button 0) - paint, mark permanent, place ploppable, or place vehicle spawner/despawner
+      else if (pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode)) {
+        // Update hover first to ensure hoveredEdge is set in line mode
+        this.updateHoverHighlight(pointer);
+        
         this.isPainting = true;
         this.lastPaintedCell = null; // Reset for new paint stroke
-        const cell = this.getCellAtPointer(pointer);
-        if (cell) {
-          this.paintCell(cell.x, cell.y);
+        if (this.isLineMode) {
+          // In line mode, we need the hovered edge
+          if (this.hoveredEdge) {
+            this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
+          }
+        } else {
+          const cell = this.getCellAtPointer(pointer);
+          if (cell) {
+            this.paintCell(cell.x, cell.y);
+          }
         }
       }
     });
@@ -269,11 +850,18 @@ export class MenuScene extends Phaser.Scene {
           this.cameraStartX - deltaX,
           this.cameraStartY - deltaY
         );
-      } else if (this.isPainting && pointer.leftButtonDown() && this.selectedColor !== null) {
+      } else if (this.isPainting && pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode)) {
         // Paint while dragging
-        const cell = this.getCellAtPointer(pointer);
-        if (cell) {
-          this.paintCell(cell.x, cell.y);
+        if (this.isLineMode) {
+          // In line mode, paint based on hovered edge
+          if (this.hoveredEdge) {
+            this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
+          }
+        } else {
+          const cell = this.getCellAtPointer(pointer);
+          if (cell) {
+            this.paintCell(cell.x, cell.y);
+          }
         }
         // Still update hover highlight
         this.updateHoverHighlight(pointer);
@@ -298,14 +886,27 @@ export class MenuScene extends Phaser.Scene {
     // Wait for DOM to be ready
     this.time.delayedCall(100, () => {
       const colorButtons = document.querySelectorAll('.color-button');
+      const ploppableButtons = document.querySelectorAll('.ploppable-button');
       
       colorButtons.forEach((button) => {
         button.addEventListener('click', () => {
           // Remove selected class from all buttons
           colorButtons.forEach(btn => btn.classList.remove('selected'));
+          ploppableButtons.forEach(btn => btn.classList.remove('selected'));
           
           // Add selected class to clicked button
           button.classList.add('selected');
+          
+          // Clear ploppable selection
+          this.selectedPloppableType = null;
+          
+          // Clear vehicle spawner mode
+          this.isVehicleSpawnerMode = false;
+          this.pendingSpawnerCell = null;
+          const vehicleButton = document.getElementById('vehicle-spawner-button');
+          if (vehicleButton) {
+            vehicleButton.classList.remove('selected');
+          }
           
           // Get color from data attribute and convert to hex number
           const colorHex = button.getAttribute('data-color');
@@ -317,7 +918,72 @@ export class MenuScene extends Phaser.Scene {
           this.selectedColorName = button.getAttribute('data-name') || null;
           this.selectedColorDescription = button.getAttribute('data-description') || null;
           
+          // Check if this is a line/border button
+          const isLineButton = ['Lane Line', 'Curb', 'Fence'].includes(this.selectedColorName || '');
+          this.isLineMode = isLineButton;
+          
+          // Disable permanent mode when selecting a color/line
+          if (this.isPermanentMode) {
+            this.isPermanentMode = false;
+            const permanentButton = document.getElementById('permanent-button');
+            if (permanentButton) {
+              permanentButton.classList.remove('selected');
+              permanentButton.textContent = 'Mark Permanent';
+            }
+          }
+          
+          // Clear hover state when switching modes
+          this.clearHighlight();
+          
           // Update selection info in right panel
+          this.updateSelectionInfo();
+        });
+      });
+      
+      // Handle ploppable button clicks
+      ploppableButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          // Remove selected class from all buttons
+          colorButtons.forEach(btn => btn.classList.remove('selected'));
+          ploppableButtons.forEach(btn => btn.classList.remove('selected'));
+          
+          // Add selected class to clicked button
+          button.classList.add('selected');
+          
+          // Clear color/line selection
+          this.selectedColor = null;
+          this.selectedColorName = null;
+          this.selectedColorDescription = null;
+          this.isLineMode = false;
+          
+          // Clear vehicle spawner mode
+          this.isVehicleSpawnerMode = false;
+          this.pendingSpawnerCell = null;
+          const vehicleButton = document.getElementById('vehicle-spawner-button');
+          if (vehicleButton) {
+            vehicleButton.classList.remove('selected');
+          }
+          
+          // Set ploppable type
+          this.selectedPloppableType = button.getAttribute('data-name') || null;
+          
+          // Reset orientation
+          this.ploppableOrientation = 0;
+          
+          // Disable permanent mode
+          if (this.isPermanentMode) {
+            this.isPermanentMode = false;
+            const permanentButton = document.getElementById('permanent-button');
+            if (permanentButton) {
+              permanentButton.classList.remove('selected');
+              permanentButton.textContent = 'Mark Permanent';
+            }
+          }
+          
+          // Clear hover state
+          this.clearHighlight();
+          
+          // Update selection info
           this.updateSelectionInfo();
         });
       });
@@ -330,7 +996,42 @@ export class MenuScene extends Phaser.Scene {
     const selectionName = document.getElementById('selection-name');
     const selectionDescription = document.getElementById('selection-description');
 
-    if (this.selectedColor !== null && selectionInfo && colorPreview && selectionName && selectionDescription) {
+    if (this.isVehicleSpawnerMode) {
+      // Show vehicle spawner info
+      if (selectionInfo && colorPreview && selectionName && selectionDescription) {
+        colorPreview.style.display = 'none';
+        if (this.pendingSpawnerCell) {
+          selectionName.textContent = 'Vehicle Despawner';
+          selectionDescription.textContent = 'Click a different cell to place the vehicle despawner (🎯).';
+        } else {
+          selectionName.textContent = 'Vehicle Spawner';
+          selectionDescription.textContent = 'Click a cell to place the vehicle spawner (🚗). After placing, you will be prompted to place a despawner.';
+        }
+        selectionInfo.style.display = 'block';
+      }
+    } else if (this.selectedPloppableType) {
+      // Show ploppable info
+      if (selectionInfo && colorPreview && selectionName && selectionDescription) {
+        // Hide color preview for ploppables
+        colorPreview.style.display = 'none';
+        selectionName.textContent = this.selectedPloppableType;
+        
+        // Build description with orientation info
+        let description = '';
+        const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
+        if (button) {
+          description = button.getAttribute('data-description') || '';
+        }
+        if (this.selectedPloppableType === 'Parking Spot') {
+          description += '\n\nUse Q and E keys to rotate orientation.';
+        }
+        selectionDescription.textContent = description;
+        
+        selectionInfo.style.display = 'block';
+      }
+    } else if (this.selectedColor !== null && selectionInfo && colorPreview && selectionName && selectionDescription) {
+      // Show color/line info
+      colorPreview.style.display = 'block';
       // Convert hex number to hex string for CSS
       const colorHexString = '#' + this.selectedColor.toString(16).padStart(6, '0');
       
@@ -344,17 +1045,58 @@ export class MenuScene extends Phaser.Scene {
     }
   }
 
+  private setupKeyboardControls(): void {
+    this.input.keyboard?.on('keydown-Q', () => {
+      if (this.selectedPloppableType === 'Parking Spot') {
+        // Rotate missing edge counter-clockwise (Q)
+        // Orientation mapping: 0 (missing left) -> 1 (missing bottom) -> 3 (missing right) -> 2 (missing top) -> 0
+        // Sequence: 0->1->3->2->0
+        // Formula: (orientation + 1) % 4, but adjusted for the sequence
+        const rotationMap = [1, 3, 0, 2]; // maps current orientation to next when rotating CCW
+        this.ploppableOrientation = rotationMap[this.ploppableOrientation];
+        // Update highlight if hovering over a cell
+        if (this.hoveredCell) {
+          this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+        }
+      }
+    });
+    
+    this.input.keyboard?.on('keydown-E', () => {
+      if (this.selectedPloppableType === 'Parking Spot') {
+        // Rotate missing edge clockwise (E)
+        // Orientation mapping: 0 (missing left) -> 2 (missing top) -> 3 (missing right) -> 1 (missing bottom) -> 0
+        // Sequence: 0->2->3->1->0
+        const rotationMap = [2, 0, 3, 1]; // maps current orientation to next when rotating CW
+        this.ploppableOrientation = rotationMap[this.ploppableOrientation];
+        // Update highlight if hovering over a cell
+        if (this.hoveredCell) {
+          this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+        }
+      }
+    });
+  }
+
   private serializeGrid(): string {
     // Convert Map to object for JSON serialization
     const gridData: Record<string, CellData> = {};
     this.cellData.forEach((value, key) => {
-      gridData[key] = value;
+      // Don't serialize edges in cellData since we now use borderSegments
+      const { edges, ...cellDataWithoutEdges } = value;
+      if (Object.keys(cellDataWithoutEdges).length > 0) {
+        gridData[key] = cellDataWithoutEdges;
+      }
+    });
+    
+    const borderSegmentsData: Record<string, number> = {};
+    this.borderSegments.forEach((value, key) => {
+      borderSegmentsData[key] = value;
     });
     
     return JSON.stringify({
       gridSize: this.gridSize,
       cellData: gridData,
-      version: '1.0' // For future compatibility
+      borderSegments: borderSegmentsData,
+      version: '3.0' // Updated to use simple border segment keys
     });
   }
 
@@ -362,8 +1104,9 @@ export class MenuScene extends Phaser.Scene {
     try {
       const data = JSON.parse(jsonData);
       
-      // Clear existing cell data
+      // Clear existing data
       this.cellData.clear();
+      this.borderSegments.clear();
       
       // Load cell data
       if (data.cellData && typeof data.cellData === 'object') {
@@ -372,11 +1115,46 @@ export class MenuScene extends Phaser.Scene {
         });
       }
       
+      // Load border segments (new format)
+      if (data.borderSegments && typeof data.borderSegments === 'object') {
+        Object.entries(data.borderSegments).forEach(([key, value]) => {
+          this.borderSegments.set(key, value as number);
+        });
+      } else if (data.edgeLines && typeof data.edgeLines === 'object') {
+        // Migrate from old edgeLines format (version 2.0)
+        Object.entries(data.edgeLines).forEach(([key, value]) => {
+          this.borderSegments.set(key, value as number);
+        });
+      } else if (data.version === '1.0' || (!data.borderSegments && !data.edgeLines)) {
+        // Migrate from old format (cell-based edges) to new format
+        this.migrateOldEdgeFormat(data.cellData);
+      }
+      
       return true;
     } catch (error) {
       console.error('Failed to load grid:', error);
       return false;
     }
+  }
+
+  private migrateOldEdgeFormat(cellData: Record<string, CellData> | undefined): void {
+    // Migrate edges from old cell-based format to new border segment format
+    if (!cellData) return;
+    
+    Object.entries(cellData).forEach(([cellKey, cell]) => {
+      if (cell.edges) {
+        const [x, y] = cellKey.split(',').map(Number);
+        const edgeNames = ['top', 'right', 'bottom', 'left'];
+        
+        edgeNames.forEach((edgeName, edgeIdx) => {
+          const edgeColor = cell.edges?.[edgeName as keyof typeof cell.edges];
+          if (edgeColor !== undefined) {
+            const segmentKey = this.getBorderSegmentKey(x, y, edgeIdx);
+            this.borderSegments.set(segmentKey, edgeColor);
+          }
+        });
+      }
+    });
   }
 
   private exportGrid(): void {
@@ -399,13 +1177,115 @@ export class MenuScene extends Phaser.Scene {
       const content = e.target?.result as string;
       const success = this.deserializeGrid(content);
       if (success) {
+        // Rebuild spawner-despawner pairs from loaded cell data
+        this.rebuildSpawnerDespawnerPairs();
         this.drawGrid(); // Redraw with imported data
+        this.drawLines(); // Redraw lines
+        this.drawRails(); // Redraw rails
         console.log('Grid imported from file');
       } else {
         alert('Failed to import grid. Invalid file format.');
       }
     };
     reader.readAsText(file);
+  }
+
+  private setupVehicleSpawnerButton(): void {
+    this.time.delayedCall(100, () => {
+      const vehicleButton = document.getElementById('vehicle-spawner-button');
+      
+      if (vehicleButton) {
+        vehicleButton.addEventListener('click', () => {
+          // Toggle vehicle spawner mode
+          this.isVehicleSpawnerMode = !this.isVehicleSpawnerMode;
+          
+          // Update button appearance
+          if (this.isVehicleSpawnerMode) {
+            vehicleButton.classList.add('selected');
+            
+            // Clear other selections
+            this.selectedColor = null;
+            this.selectedColorName = null;
+            this.selectedColorDescription = null;
+            this.isLineMode = false;
+            this.selectedPloppableType = null;
+            this.isPermanentMode = false;
+            
+            // Clear button selections
+            document.querySelectorAll('.color-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            document.querySelectorAll('.ploppable-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            const permanentButton = document.getElementById('permanent-button');
+            if (permanentButton) {
+              permanentButton.classList.remove('selected');
+              permanentButton.textContent = 'Mark Permanent';
+            }
+            
+            // Reset pending state
+            this.pendingSpawnerCell = null;
+            
+            this.clearHighlight();
+            this.updateSelectionInfo();
+          } else {
+            vehicleButton.classList.remove('selected');
+            this.pendingSpawnerCell = null;
+            this.clearHighlight();
+            this.updateSelectionInfo();
+          }
+        });
+      }
+    });
+  }
+
+  private setupPermanentButton(): void {
+    this.time.delayedCall(100, () => {
+      const permanentButton = document.getElementById('permanent-button');
+      
+      if (permanentButton) {
+        permanentButton.addEventListener('click', () => {
+          // Toggle permanent mode
+          this.isPermanentMode = !this.isPermanentMode;
+          
+          // Update button appearance
+          if (this.isPermanentMode) {
+            permanentButton.classList.add('selected');
+            permanentButton.textContent = 'Mark Permanent (Active)';
+          } else {
+            permanentButton.classList.remove('selected');
+            permanentButton.textContent = 'Mark Permanent';
+          }
+          
+          // Clear any color selection when entering permanent mode
+          if (this.isPermanentMode) {
+            this.selectedColor = null;
+            this.selectedColorName = null;
+            this.selectedColorDescription = null;
+            this.isLineMode = false;
+            this.selectedPloppableType = null;
+            this.isVehicleSpawnerMode = false;
+            this.pendingSpawnerCell = null;
+            
+            // Clear color button selections
+            document.querySelectorAll('.color-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            document.querySelectorAll('.ploppable-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            const vehicleButton = document.getElementById('vehicle-spawner-button');
+            if (vehicleButton) {
+              vehicleButton.classList.remove('selected');
+            }
+            
+            this.clearHighlight();
+            this.updateSelectionInfo();
+          }
+        });
+      }
+    });
   }
 
   private setupExportImportButtons(): void {
@@ -432,6 +1312,308 @@ export class MenuScene extends Phaser.Scene {
           }
         });
       }
+    });
+  }
+
+  update(_time: number, delta: number): void {
+    // Update vehicle system
+    this.vehicleSystem.update(delta, this.gridSize, this.gridOffsetX, this.gridOffsetY);
+    
+    // Draw vehicles
+    this.drawVehicles();
+  }
+
+  /**
+   * Rebuild spawner-despawner pairs from cell data
+   * Uses a simple nearest-neighbor approach to pair spawners with despawners
+   */
+  private rebuildSpawnerDespawnerPairs(): void {
+    // Clear existing pairs
+    this.vehicleSystem.clearVehicles();
+    
+    // Find all spawners and despawners
+    const spawners: { x: number; y: number }[] = [];
+    const despawners: { x: number; y: number }[] = [];
+    
+    for (let x = 0; x < this.gridSize; x++) {
+      for (let y = 0; y < this.gridSize; y++) {
+        const cellData = this.getCellData(x, y);
+        if (cellData?.vehicleSpawner) {
+          spawners.push({ x, y });
+        }
+        if (cellData?.vehicleDespawner) {
+          despawners.push({ x, y });
+        }
+      }
+    }
+    
+    // Pair each spawner with the nearest despawner
+    const usedDespawners = new Set<string>();
+    
+    spawners.forEach(spawner => {
+      let nearestDespawner: { x: number; y: number } | null = null;
+      let minDistance = Infinity;
+      
+      for (const despawner of despawners) {
+        const key = `${despawner.x},${despawner.y}`;
+        if (!usedDespawners.has(key)) {
+          // Calculate Manhattan distance
+          const distance = Math.abs(spawner.x - despawner.x) + Math.abs(spawner.y - despawner.y);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestDespawner = { x: despawner.x, y: despawner.y };
+          }
+        }
+      }
+      
+      if (nearestDespawner !== null && nearestDespawner !== undefined) {
+        const dx = nearestDespawner.x;
+        const dy = nearestDespawner.y;
+        const pair: SpawnerDespawnerPair = {
+          spawnerX: spawner.x,
+          spawnerY: spawner.y,
+          despawnerX: dx,
+          despawnerY: dy
+        };
+        this.vehicleSystem.addSpawnerDespawnerPair(pair);
+        usedDespawners.add(`${dx},${dy}`);
+      }
+    });
+  }
+
+  /**
+   * Get all parking spots from the grid
+   */
+  private getAllParkingSpots(): Ploppable[] {
+    const parkingSpots: Ploppable[] = [];
+    
+    for (let x = 0; x < this.gridSize; x++) {
+      for (let y = 0; y < this.gridSize; y++) {
+        const cellData = this.getCellData(x, y);
+        const ploppable = cellData?.ploppable;
+        if (ploppable && ploppable.type === 'Parking Spot') {
+          parkingSpots.push(ploppable);
+        }
+      }
+    }
+    
+    return parkingSpots;
+  }
+
+  /**
+   * Check if an edge is impassable (curb, fence, or parking spot border)
+   */
+  isEdgeImpassable(cellX: number, cellY: number, edge: number): boolean {
+    // Check if this edge is a curb or fence (from border segments)
+    const existingKey = this.findExistingBorderSegmentKey(cellX, cellY, edge);
+    if (existingKey) {
+      const color = this.borderSegments.get(existingKey);
+      // Curb: #808080 (gray), Fence: #ff0000 (red)
+      if (color === 0x808080 || color === 0xff0000) {
+        return true;
+      }
+    }
+    
+    // Check if this edge is part of a parking spot border
+    const cellData = this.getCellData(cellX, cellY);
+    if (cellData?.ploppable?.type === 'Parking Spot') {
+      const orientation = cellData.ploppable.orientation || 0;
+      // Orientation represents which edge is missing (undrawn):
+      // 0 = missing left (edge 3) - draws edges 0,1,2
+      // 1 = missing bottom (edge 2) - draws edges 0,1,3
+      // 2 = missing top (edge 0) - draws edges 1,2,3
+      // 3 = missing right (edge 1) - draws edges 0,2,3
+      const edgesToDraw = [
+        [0, 1, 2], // orientation 0: missing left (3)
+        [0, 1, 3], // orientation 1: missing bottom (2)
+        [1, 2, 3], // orientation 2: missing top (0)
+        [0, 2, 3]  // orientation 3: missing right (1)
+      ];
+      const drawnEdges = edgesToDraw[orientation];
+      if (drawnEdges.includes(edge)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if a rail segment (between two cell centers) crosses an impassable line
+   */
+  doesRailSegmentCrossImpassable(
+    startX: number, startY: number,
+    endX: number, endY: number
+  ): boolean {
+    // Convert cell centers to screen coordinates (without offset, for calculation)
+    const startScreen = isoToScreen(startX, startY);
+    const endScreen = isoToScreen(endX, endY);
+    
+    // Check all cells that might have edges crossing this rail segment
+    // We need to check cells along the path
+    const minX = Math.min(startX, endX);
+    const maxX = Math.max(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxY = Math.max(startY, endY);
+    
+    // Check all cells in the bounding box
+    for (let x = Math.floor(minX); x <= Math.ceil(maxX); x++) {
+      for (let y = Math.floor(minY); y <= Math.ceil(maxY); y++) {
+        if (x < 0 || x >= this.gridSize || y < 0 || y >= this.gridSize) continue;
+        
+        // Check all 4 edges of this cell
+        for (let edge = 0; edge < 4; edge++) {
+          if (this.isEdgeImpassable(x, y, edge)) {
+            // Get edge coordinates
+            const edgeCoords = this.getBorderSegmentCoords(x, y, edge);
+            // Remove offset for comparison
+            const edgeStart = {
+              x: edgeCoords.startX - this.gridOffsetX,
+              y: edgeCoords.startY - this.gridOffsetY
+            };
+            const edgeEnd = {
+              x: edgeCoords.endX - this.gridOffsetX,
+              y: edgeCoords.endY - this.gridOffsetY
+            };
+            
+            // Check if rail segment intersects with this edge
+            if (this.linesIntersect(
+              startScreen.x, startScreen.y,
+              endScreen.x, endScreen.y,
+              edgeStart.x, edgeStart.y,
+              edgeEnd.x, edgeEnd.y
+            )) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if two line segments intersect
+   */
+  private linesIntersect(
+    x1: number, y1: number, x2: number, y2: number,
+    x3: number, y3: number, x4: number, y4: number
+  ): boolean {
+    // Using cross product to check intersection
+    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(denom) < 0.0001) return false; // Lines are parallel
+    
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+    
+    // Check if intersection point is on both segments
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  }
+
+  private drawRails(): void {
+    this.railGraphics.clear();
+    
+    // Draw dotted lines through midpoints of each row and column
+    // Rows: cells with same grid Y (diagonal lines in screen space, top-left to bottom-right)
+    // Columns: cells with same grid X (diagonal lines in screen space, top-right to bottom-left)
+    
+    const dotLength = 4;
+    const gapLength = 4;
+    const lineColor = 0x00ff00; // Green color for rails
+    const lineAlpha = 0.5;
+    
+    // Draw row rails (diagonal lines through cell centers with same grid Y)
+    for (let y = 0; y < this.gridSize; y++) {
+      // Get the first and last cell centers in this row
+      const firstCellCenter = isoToScreen(0, y);
+      const lastCellCenter = isoToScreen(this.gridSize - 1, y);
+      
+      const startX = firstCellCenter.x + this.gridOffsetX;
+      const startY = firstCellCenter.y + this.gridOffsetY;
+      const endX = lastCellCenter.x + this.gridOffsetX;
+      const endY = lastCellCenter.y + this.gridOffsetY;
+      
+      // Calculate line length and direction
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const unitX = dx / length;
+      const unitY = dy / length;
+      
+      // Draw dotted line
+      this.railGraphics.lineStyle(2, lineColor, lineAlpha);
+      let currentDistance = 0;
+      while (currentDistance < length) {
+        const segmentStartX = startX + currentDistance * unitX;
+        const segmentStartY = startY + currentDistance * unitY;
+        const segmentEndDistance = Math.min(currentDistance + dotLength, length);
+        const segmentEndX = startX + segmentEndDistance * unitX;
+        const segmentEndY = startY + segmentEndDistance * unitY;
+        
+        this.railGraphics.lineBetween(segmentStartX, segmentStartY, segmentEndX, segmentEndY);
+        currentDistance = segmentEndDistance + gapLength;
+      }
+    }
+    
+    // Draw column rails (diagonal lines through cell centers with same grid X)
+    for (let x = 0; x < this.gridSize; x++) {
+      // Get the first and last cell centers in this column
+      const firstCellCenter = isoToScreen(x, 0);
+      const lastCellCenter = isoToScreen(x, this.gridSize - 1);
+      
+      const startX = firstCellCenter.x + this.gridOffsetX;
+      const startY = firstCellCenter.y + this.gridOffsetY;
+      const endX = lastCellCenter.x + this.gridOffsetX;
+      const endY = lastCellCenter.y + this.gridOffsetY;
+      
+      // Calculate line length and direction
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const unitX = dx / length;
+      const unitY = dy / length;
+      
+      // Draw dotted line
+      this.railGraphics.lineStyle(2, lineColor, lineAlpha);
+      let currentDistance = 0;
+      while (currentDistance < length) {
+        const segmentStartX = startX + currentDistance * unitX;
+        const segmentStartY = startY + currentDistance * unitY;
+        const segmentEndDistance = Math.min(currentDistance + dotLength, length);
+        const segmentEndX = startX + segmentEndDistance * unitX;
+        const segmentEndY = startY + segmentEndDistance * unitY;
+        
+        this.railGraphics.lineBetween(segmentStartX, segmentStartY, segmentEndX, segmentEndY);
+        currentDistance = segmentEndDistance + gapLength;
+      }
+    }
+  }
+
+  private drawVehicles(): void {
+    this.vehicleGraphics.clear();
+    
+    const vehicles = this.vehicleSystem.getVehicles();
+    
+    vehicles.forEach(vehicle => {
+      // Draw red diamond smaller than a cell, matching isometric orientation
+      const halfWidth = (TILE_WIDTH / 2) * 0.7; // Match isometric width ratio
+      const halfHeight = (TILE_HEIGHT / 2) * 0.7; // Match isometric height ratio
+      
+      // Vehicle position in screen coordinates
+      const screenX = vehicle.screenX + this.gridOffsetX;
+      const screenY = vehicle.screenY + this.gridOffsetY;
+      
+      // Draw diamond shape matching isometric tile orientation
+      // Points: top, right, bottom, left (same as isometric cells)
+      this.vehicleGraphics.fillStyle(0xff0000, 1); // Red
+      this.vehicleGraphics.beginPath();
+      this.vehicleGraphics.moveTo(screenX, screenY - halfHeight); // Top
+      this.vehicleGraphics.lineTo(screenX + halfWidth, screenY); // Right
+      this.vehicleGraphics.lineTo(screenX, screenY + halfHeight); // Bottom
+      this.vehicleGraphics.lineTo(screenX - halfWidth, screenY); // Left
+      this.vehicleGraphics.closePath();
+      this.vehicleGraphics.fillPath();
     });
   }
 }
