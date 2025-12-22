@@ -118,6 +118,13 @@ export interface CellData {
     left?: number;     // Color hex for left edge line
   };
   
+  // Directional travel permissions (for lane line directionality)
+  // true = travel allowed in that direction, false = blocked by lane line
+  canNorth?: boolean;  // Can travel north (to y-1, decreasing Y)
+  canSouth?: boolean;  // Can travel south (to y+1, increasing Y)
+  canEast?: boolean;   // Can travel east (to x+1, increasing X)
+  canWest?: boolean;   // Can travel west (to x-1, decreasing X)
+  
   // Additional properties can be added here as needed
   // e.g., terrain type, elevation, ownership, etc.
 }

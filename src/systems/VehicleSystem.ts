@@ -1,8 +1,9 @@
-import { Vehicle, SpawnerDespawnerPair, CellData, Ploppable } from '@/types';
+import { SpawnerDespawnerPair, CellData, Ploppable } from '@/types';
 import { VehicleEntity } from '@/entities/Vehicle';
 import { isoToScreen } from '@/utils/isometric';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { PedestrianSystem } from './PedestrianSystem';
+import { PathfindingSystem, EdgeBlockedCallback } from './PathfindingSystem';
 
 export class VehicleSystem {
   private vehicles: VehicleEntity[] = [];
@@ -16,22 +17,28 @@ export class VehicleSystem {
   private readonly maxParkingDuration: number = 15000; // Maximum parking time (15 seconds)
   private getCellData: (x: number, y: number) => CellData | undefined;
   private getParkingSpots: () => Ploppable[];
+  private pedestrianSystem?: PedestrianSystem;
+  private pathfindingSystem: PathfindingSystem;
   private gridSize: number;
-  private checkRailSegment: (startX: number, startY: number, endX: number, endY: number) => boolean;
-  private pedestrianSystem?: PedestrianSystem; // Optional pedestrian system
 
   constructor(
+    gridSize: number,
     getCellData: (x: number, y: number) => CellData | undefined,
     getParkingSpots: () => Ploppable[],
-    gridSize: number,
-    checkRailSegment: (startX: number, startY: number, endX: number, endY: number) => boolean,
+    isEdgeBlocked: EdgeBlockedCallback,
     pedestrianSystem?: PedestrianSystem
   ) {
+    this.gridSize = gridSize;
     this.getCellData = getCellData;
     this.getParkingSpots = getParkingSpots;
-    this.gridSize = gridSize;
-    this.checkRailSegment = checkRailSegment;
     this.pedestrianSystem = pedestrianSystem;
+    
+    // Initialize pathfinding system
+    this.pathfindingSystem = new PathfindingSystem(
+      gridSize,
+      getCellData,
+      isEdgeBlocked
+    );
   }
 
   /**
@@ -56,160 +63,21 @@ export class VehicleSystem {
   }
 
   /**
-   * Find path from start to end using rail grid (A* pathfinding)
-   * Vehicles can only move along row rails (same Y) or column rails (same X)
+   * Find an unreserved parking spot that is reachable from the given position
    */
-  private findPath(
-    startX: number,
-    startY: number,
-    endX: number,
-    endY: number,
-    _gridSize: number
-  ): { x: number; y: number }[] {
-    // If start and end are the same, return direct path
-    if (startX === endX && startY === endY) {
-      return [{ x: endX, y: endY }];
-    }
-
-    // A* pathfinding on rail grid (cell centers)
-    // Nodes are cell centers (grid coordinates)
-    // Edges are rail segments (row rails: same Y, or column rails: same X)
-    
-    interface Node {
-      x: number;
-      y: number;
-      g: number; // Cost from start
-      h: number; // Heuristic to end
-      f: number; // Total cost (g + h)
-      parent: Node | null;
-    }
-
-    const openSet: Map<string, Node> = new Map();
-    const closedSet: Set<string> = new Set();
-    
-    const startNode: Node = {
-      x: startX,
-      y: startY,
-      g: 0,
-      h: this.heuristic(startX, startY, endX, endY),
-      f: 0,
-      parent: null
-    };
-    startNode.f = startNode.g + startNode.h;
-    
-    openSet.set(`${startX},${startY}`, startNode);
-    
-    while (openSet.size > 0) {
-      // Find node with lowest f score
-      let current: Node | null = null;
-      let lowestF = Infinity;
-      for (const node of openSet.values()) {
-        if (node.f < lowestF) {
-          lowestF = node.f;
-          current = node;
-        }
-      }
-      
-      if (!current) break;
-      
-      const currentKey = `${current.x},${current.y}`;
-      
-      // Check if we reached the goal
-      if (current.x === endX && current.y === endY) {
-        // Reconstruct path
-        const path: { x: number; y: number }[] = [];
-        let node: Node | null = current;
-        while (node) {
-          path.unshift({ x: node.x, y: node.y });
-          node = node.parent;
-        }
-        return path;
-      }
-      
-      // Move current from open to closed
-      openSet.delete(currentKey);
-      closedSet.add(currentKey);
-      
-      // Get neighbors (adjacent cells along row or column rails)
-      const neighbors = this.getRailNeighbors(current.x, current.y, this.gridSize);
-      
-      for (const neighbor of neighbors) {
-        const neighborKey = `${neighbor.x},${neighbor.y}`;
-        
-        // Skip if already in closed set
-        if (closedSet.has(neighborKey)) continue;
-        
-        // Check if rail segment crosses an impassable line
-        if (this.checkRailSegment(current.x, current.y, neighbor.x, neighbor.y)) {
-          continue; // Skip this neighbor - rail segment is blocked
-        }
-        
-        // Calculate cost (distance along rail)
-        const cost = this.heuristic(current.x, current.y, neighbor.x, neighbor.y);
-        const tentativeG = current.g + cost;
-        
-        // Check if neighbor is in open set
-        const existingNeighbor = openSet.get(neighborKey);
-        if (!existingNeighbor) {
-          // New node - add to open set
-          const neighborNode: Node = {
-            x: neighbor.x,
-            y: neighbor.y,
-            g: tentativeG,
-            h: this.heuristic(neighbor.x, neighbor.y, endX, endY),
-            f: 0,
-            parent: current
-          };
-          neighborNode.f = neighborNode.g + neighborNode.h;
-          openSet.set(neighborKey, neighborNode);
-        } else if (tentativeG < existingNeighbor.g) {
-          // Better path found - update neighbor
-          existingNeighbor.g = tentativeG;
-          existingNeighbor.f = existingNeighbor.g + existingNeighbor.h;
-          existingNeighbor.parent = current;
-        }
-      }
-    }
-    
-    // No path found - return direct path as fallback
-    return [{ x: endX, y: endY }];
-  }
-
-  /**
-   * Get neighbors along rail grid (same row or same column)
-   */
-  private getRailNeighbors(x: number, y: number, gridSize: number): { x: number; y: number }[] {
-    const neighbors: { x: number; y: number }[] = [];
-    
-    // Row rail neighbors (same Y, different X)
-    if (x > 0) neighbors.push({ x: x - 1, y });
-    if (x < gridSize - 1) neighbors.push({ x: x + 1, y });
-    
-    // Column rail neighbors (same X, different Y)
-    if (y > 0) neighbors.push({ x, y: y - 1 });
-    if (y < gridSize - 1) neighbors.push({ x, y: y + 1 });
-    
-    return neighbors;
-  }
-
-  /**
-   * Heuristic function (Euclidean distance in isometric space)
-   */
-  private heuristic(x1: number, y1: number, x2: number, y2: number): number {
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    return Math.sqrt(dx * dx + dy * dy);
-  }
-
-  /**
-   * Find an unreserved parking spot
-   */
-  private findUnreservedParkingSpot(): { x: number; y: number } | null {
+  private findUnreservedParkingSpot(fromX: number, fromY: number): { x: number; y: number } | null {
     const parkingSpots = this.getParkingSpots();
     
-    for (const spot of parkingSpots) {
+    // Shuffle parking spots to add variety in which spots get chosen
+    const shuffled = [...parkingSpots].sort(() => Math.random() - 0.5);
+    
+    for (const spot of shuffled) {
       if (!spot.reserved) {
-        return { x: spot.x, y: spot.y };
+        // Check if we can actually path to this spot
+        const path = this.pathfindingSystem.findPath(fromX, fromY, spot.x, spot.y, 'vehicle');
+        if (path.length > 0 || (fromX === spot.x && fromY === spot.y)) {
+          return { x: spot.x, y: spot.y };
+        }
       }
     }
     
@@ -243,7 +111,7 @@ export class VehicleSystem {
   /**
    * Spawn a vehicle at a spawner
    */
-  private spawnVehicle(pair: SpawnerDespawnerPair, gridSize: number): void {
+  private spawnVehicle(pair: SpawnerDespawnerPair): void {
     // Randomly determine if this vehicle is a potential parker
     const isPotentialParker = Math.random() < this.potentialParkerChance;
     
@@ -253,23 +121,54 @@ export class VehicleSystem {
     
     // If potential parker, try to find and reserve a parking spot
     if (isPotentialParker) {
-      reservedSpot = this.findUnreservedParkingSpot();
+      reservedSpot = this.findUnreservedParkingSpot(pair.spawnerX, pair.spawnerY);
       if (reservedSpot && this.reserveParkingSpot(reservedSpot.x, reservedSpot.y)) {
         targetX = reservedSpot.x;
         targetY = reservedSpot.y;
       } else {
-        // No unreserved spot found, continue to despawner
+        // No reachable unreserved spot found, continue to despawner
         reservedSpot = null;
       }
     }
     
-    const path = this.findPath(
+    // Find path using A* pathfinding
+    const path = this.pathfindingSystem.findPath(
       pair.spawnerX,
       pair.spawnerY,
       targetX,
       targetY,
-      gridSize
+      'vehicle'
     );
+    
+    // If no path found and we reserved a spot, unreserve it and try for despawner
+    if (path.length === 0 && reservedSpot) {
+      this.unreserveParkingSpot(reservedSpot.x, reservedSpot.y);
+      reservedSpot = null;
+      targetX = pair.despawnerX;
+      targetY = pair.despawnerY;
+      
+      // Try to find path to despawner
+      const despawnerPath = this.pathfindingSystem.findPath(
+        pair.spawnerX,
+        pair.spawnerY,
+        targetX,
+        targetY,
+        'vehicle'
+      );
+      
+      if (despawnerPath.length === 0) {
+        // Can't even reach despawner, don't spawn
+        console.warn('Vehicle cannot find path from spawner to despawner');
+        return;
+      }
+      
+      // Use despawner path
+      path.push(...despawnerPath);
+    } else if (path.length === 0 && !reservedSpot) {
+      // Not a parker and can't reach despawner
+      console.warn('Vehicle cannot find path from spawner to despawner');
+      return;
+    }
     
     // Random speed with variance
     const speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
@@ -281,7 +180,7 @@ export class VehicleSystem {
       pair.despawnerY,
       path,
       speed,
-      isPotentialParker
+      isPotentialParker && reservedSpot !== null
     );
     
     // Set reserved spot if found
@@ -301,7 +200,7 @@ export class VehicleSystem {
   /**
    * Update all vehicles and handle spawning
    */
-  update(delta: number, gridSize: number, gridOffsetX: number, gridOffsetY: number): void {
+  update(delta: number, _gridSize: number, _gridOffsetX: number, _gridOffsetY: number): void {
     // Update spawn timers and spawn vehicles
     this.spawnerDespawnerPairs.forEach(pair => {
       const key = `${pair.spawnerX},${pair.spawnerY}`;
@@ -310,7 +209,7 @@ export class VehicleSystem {
       
       if (newTime <= 0) {
         // Spawn a vehicle
-        this.spawnVehicle(pair, gridSize);
+        this.spawnVehicle(pair);
         // Reset timer with some variance
         this.spawnTimers.set(key, this.spawnInterval + Math.random() * 1000);
       } else {
@@ -333,65 +232,37 @@ export class VehicleSystem {
       }
 
       if (vehicle.state === 'moving') {
-        // Check if we have a valid path
-        if (vehicle.path.length === 0) {
-          // No path, despawn immediately
-          vehicle.state = 'despawning';
-        } else if (vehicle.currentPathIndex < vehicle.path.length) {
-          const target = vehicle.path[vehicle.currentPathIndex];
-          const targetScreenPos = isoToScreen(target.x, target.y);
-          // Target position is relative to grid origin (0,0)
-          const targetScreenX = targetScreenPos.x;
-          const targetScreenY = targetScreenPos.y;
-          
-          // Vehicle screenX/screenY are also relative to grid origin
-          // Calculate distance to target
-          const dx = targetScreenX - vehicle.screenX;
-          const dy = targetScreenY - vehicle.screenY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          // Move towards target
-          const moveDistance = (vehicle.speed * delta) / 1000; // Convert to pixels per frame
-          
-          if (distance <= moveDistance || distance < 0.1) {
-            // Reached current target
-            vehicle.screenX = targetScreenX;
-            vehicle.screenY = targetScreenY;
-            vehicle.x = target.x;
-            vehicle.y = target.y;
-            vehicle.currentPathIndex++;
-            
-            // Check if reached destination
-            if (vehicle.currentPathIndex >= vehicle.path.length) {
-              // Check if we reached a reserved parking spot
-              if (vehicle.reservedSpotX !== undefined && 
-                  vehicle.reservedSpotY !== undefined &&
-                  vehicle.x === vehicle.reservedSpotX &&
-                  vehicle.y === vehicle.reservedSpotY) {
-                // Start parking
-                vehicle.state = 'parking';
-                vehicle.parkingDuration = this.minParkingDuration + 
-                  Math.random() * (this.maxParkingDuration - this.minParkingDuration);
-                vehicle.parkingTimer = vehicle.parkingDuration;
-              } else {
-                // Reached despawner
-                vehicle.state = 'despawning';
-              }
-            }
-          } else {
-            // Move towards target
-            const moveX = (dx / distance) * moveDistance;
-            const moveY = (dy / distance) * moveDistance;
-            vehicle.screenX += moveX;
-            vehicle.screenY += moveY;
-            
-            // Update grid position (snap to nearest grid cell)
-            const isoPos = this.screenToIso(vehicle.screenX, vehicle.screenY);
-            vehicle.x = Math.round(isoPos.x);
-            vehicle.y = Math.round(isoPos.y);
-          }
-        } else {
-          // Path completed
+        this.updateMovingVehicle(vehicle, delta);
+      } else if (vehicle.state === 'parking') {
+        this.updateParkingVehicle(vehicle, delta);
+      } else if (vehicle.state === 'leaving') {
+        this.updateLeavingVehicle(vehicle, delta);
+      }
+    });
+
+    // Remove despawned vehicles
+    this.vehicles = this.vehicles.filter(v => !vehiclesToRemove.includes(v.id));
+  }
+
+  /**
+   * Update a vehicle in the 'moving' state
+   */
+  private updateMovingVehicle(vehicle: VehicleEntity, delta: number): void {
+    // Check if we have a valid path
+    if (vehicle.path.length === 0) {
+      vehicle.state = 'despawning';
+      return;
+    }
+    
+    if (vehicle.currentPathIndex < vehicle.path.length) {
+      const reachedTarget = this.moveVehicleTowardsTarget(vehicle, delta);
+      
+      if (reachedTarget) {
+        vehicle.currentPathIndex++;
+        
+        // Check if reached end of path
+        if (vehicle.currentPathIndex >= vehicle.path.length) {
+          // Check if we reached a reserved parking spot
           if (vehicle.reservedSpotX !== undefined && 
               vehicle.reservedSpotY !== undefined &&
               vehicle.x === vehicle.reservedSpotX &&
@@ -402,122 +273,159 @@ export class VehicleSystem {
               Math.random() * (this.maxParkingDuration - this.minParkingDuration);
             vehicle.parkingTimer = vehicle.parkingDuration;
           } else {
+            // Reached despawner
             vehicle.state = 'despawning';
           }
         }
-      } else if (vehicle.state === 'parking') {
-        // Check if pedestrian has been spawned (only spawn once when entering parking state)
+      }
+    } else {
+      // Path completed
+      if (vehicle.reservedSpotX !== undefined && 
+          vehicle.reservedSpotY !== undefined &&
+          vehicle.x === vehicle.reservedSpotX &&
+          vehicle.y === vehicle.reservedSpotY) {
+        vehicle.state = 'parking';
+        vehicle.parkingDuration = this.minParkingDuration + 
+          Math.random() * (this.maxParkingDuration - this.minParkingDuration);
+        vehicle.parkingTimer = vehicle.parkingDuration;
+      } else {
+        vehicle.state = 'despawning';
+      }
+    }
+  }
+
+  /**
+   * Update a vehicle in the 'parking' state
+   */
+  private updateParkingVehicle(vehicle: VehicleEntity, delta: number): void {
+    // Spawn pedestrian when first entering parking state
+    if (this.pedestrianSystem) {
+      const existingPedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
+      if (!existingPedestrian && vehicle.parkingTimer === vehicle.parkingDuration) {
+        // Just started parking and no pedestrian exists - spawn pedestrian
+        this.pedestrianSystem.spawnPedestrianFromVehicle(
+          vehicle.id,
+          vehicle.x,
+          vehicle.y
+        );
+      }
+    }
+    
+    // Update parking timer
+    if (vehicle.parkingTimer !== undefined) {
+      vehicle.parkingTimer -= delta;
+      
+      if (vehicle.parkingTimer <= 0) {
+        // Parking time is up, but check if pedestrian has returned
         if (this.pedestrianSystem) {
-          const existingPedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
-          if (!existingPedestrian && vehicle.parkingTimer === vehicle.parkingDuration) {
-            // Just started parking and no pedestrian exists - spawn pedestrian
-            this.pedestrianSystem.spawnPedestrianFromVehicle(
-              vehicle.id,
-              vehicle.x,
-              vehicle.y
-            );
+          const pedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
+          
+          // Only allow vehicle to leave if pedestrian is at vehicle
+          if (pedestrian && pedestrian.state === 'at_vehicle') {
+            this.startVehicleLeaving(vehicle);
           }
-        }
-        
-        // Update parking timer
-        if (vehicle.parkingTimer !== undefined) {
-          vehicle.parkingTimer -= delta;
-          
-          if (vehicle.parkingTimer <= 0) {
-            // Parking time is up, but check if pedestrian has returned
-            if (this.pedestrianSystem) {
-              const pedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
-              
-              // Only allow vehicle to leave if pedestrian is at vehicle (despawned at vehicle)
-              if (pedestrian && pedestrian.state === 'at_vehicle') {
-                // Pedestrian has returned, vehicle can leave
-                if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
-                  this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
-                }
-                
-                // Create path to despawner
-                const pathToDespawner = this.findPath(
-                  vehicle.x,
-                  vehicle.y,
-                  vehicle.despawnerX,
-                  vehicle.despawnerY,
-                  gridSize
-                );
-                
-                vehicle.path = pathToDespawner;
-                vehicle.currentPathIndex = 0;
-                vehicle.state = 'leaving';
-                vehicle.reservedSpotX = undefined;
-                vehicle.reservedSpotY = undefined;
-              }
-              // If pedestrian hasn't returned yet, vehicle waits (parking timer stays at 0)
-            } else {
-              // No pedestrian system, vehicle can leave immediately
-              if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
-                this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
-              }
-              
-              // Create path to despawner
-              const pathToDespawner = this.findPath(
-                vehicle.x,
-                vehicle.y,
-                vehicle.despawnerX,
-                vehicle.despawnerY,
-                gridSize
-              );
-              
-              vehicle.path = pathToDespawner;
-              vehicle.currentPathIndex = 0;
-              vehicle.state = 'leaving';
-              vehicle.reservedSpotX = undefined;
-              vehicle.reservedSpotY = undefined;
-            }
-          }
-        }
-      } else if (vehicle.state === 'leaving') {
-        // Same movement logic as 'moving' state
-        if (vehicle.path.length === 0) {
-          vehicle.state = 'despawning';
-        } else if (vehicle.currentPathIndex < vehicle.path.length) {
-          const target = vehicle.path[vehicle.currentPathIndex];
-          const targetScreenPos = isoToScreen(target.x, target.y);
-          const targetScreenX = targetScreenPos.x;
-          const targetScreenY = targetScreenPos.y;
-          
-          const dx = targetScreenX - vehicle.screenX;
-          const dy = targetScreenY - vehicle.screenY;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          const moveDistance = (vehicle.speed * delta) / 1000;
-          
-          if (distance <= moveDistance || distance < 0.1) {
-            vehicle.screenX = targetScreenX;
-            vehicle.screenY = targetScreenY;
-            vehicle.x = target.x;
-            vehicle.y = target.y;
-            vehicle.currentPathIndex++;
-            
-            if (vehicle.currentPathIndex >= vehicle.path.length) {
-              vehicle.state = 'despawning';
-            }
-          } else {
-            const moveX = (dx / distance) * moveDistance;
-            const moveY = (dy / distance) * moveDistance;
-            vehicle.screenX += moveX;
-            vehicle.screenY += moveY;
-            
-            const isoPos = this.screenToIso(vehicle.screenX, vehicle.screenY);
-            vehicle.x = Math.round(isoPos.x);
-            vehicle.y = Math.round(isoPos.y);
-          }
+          // If pedestrian hasn't returned yet, vehicle waits
         } else {
+          // No pedestrian system, vehicle can leave immediately
+          this.startVehicleLeaving(vehicle);
+        }
+      }
+    }
+  }
+
+  /**
+   * Start a parked vehicle leaving towards the despawner
+   */
+  private startVehicleLeaving(vehicle: VehicleEntity): void {
+    // Unreserve the parking spot
+    if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
+      this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
+    }
+    
+    // Find path to despawner
+    const pathToDespawner = this.pathfindingSystem.findPath(
+      vehicle.x,
+      vehicle.y,
+      vehicle.despawnerX,
+      vehicle.despawnerY,
+      'vehicle'
+    );
+    
+    if (pathToDespawner.length === 0 && 
+        !(vehicle.x === vehicle.despawnerX && vehicle.y === vehicle.despawnerY)) {
+      // Can't find path to despawner, just despawn
+      console.warn('Parked vehicle cannot find path to despawner, despawning immediately');
+      vehicle.state = 'despawning';
+      return;
+    }
+    
+    vehicle.path = pathToDespawner;
+    vehicle.currentPathIndex = 0;
+    vehicle.state = 'leaving';
+    vehicle.reservedSpotX = undefined;
+    vehicle.reservedSpotY = undefined;
+  }
+
+  /**
+   * Update a vehicle in the 'leaving' state
+   */
+  private updateLeavingVehicle(vehicle: VehicleEntity, delta: number): void {
+    if (vehicle.path.length === 0) {
+      vehicle.state = 'despawning';
+      return;
+    }
+    
+    if (vehicle.currentPathIndex < vehicle.path.length) {
+      const reachedTarget = this.moveVehicleTowardsTarget(vehicle, delta);
+      
+      if (reachedTarget) {
+        vehicle.currentPathIndex++;
+        
+        if (vehicle.currentPathIndex >= vehicle.path.length) {
           vehicle.state = 'despawning';
         }
       }
-    });
+    } else {
+      vehicle.state = 'despawning';
+    }
+  }
 
-    // Remove despawned vehicles
-    this.vehicles = this.vehicles.filter(v => !vehiclesToRemove.includes(v.id));
+  /**
+   * Move vehicle towards its current path target
+   * Returns true if the target was reached
+   */
+  private moveVehicleTowardsTarget(vehicle: VehicleEntity, delta: number): boolean {
+    const target = vehicle.path[vehicle.currentPathIndex];
+    const targetScreenPos = isoToScreen(target.x, target.y);
+    const targetScreenX = targetScreenPos.x;
+    const targetScreenY = targetScreenPos.y;
+    
+    const dx = targetScreenX - vehicle.screenX;
+    const dy = targetScreenY - vehicle.screenY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    const moveDistance = (vehicle.speed * delta) / 1000;
+    
+    if (distance <= moveDistance || distance < 0.1) {
+      // Reached target
+      vehicle.screenX = targetScreenX;
+      vehicle.screenY = targetScreenY;
+      vehicle.x = target.x;
+      vehicle.y = target.y;
+      return true;
+    } else {
+      // Move towards target
+      const moveX = (dx / distance) * moveDistance;
+      const moveY = (dy / distance) * moveDistance;
+      vehicle.screenX += moveX;
+      vehicle.screenY += moveY;
+      
+      // Update grid position
+      const isoPos = this.screenToIso(vehicle.screenX, vehicle.screenY);
+      vehicle.x = Math.round(isoPos.x);
+      vehicle.y = Math.round(isoPos.y);
+      return false;
+    }
   }
 
   /**
@@ -541,5 +449,13 @@ export class VehicleSystem {
    */
   clearVehicles(): void {
     this.vehicles = [];
+  }
+
+  /**
+   * Update grid size (e.g., when loading a new map)
+   */
+  setGridSize(size: number): void {
+    this.gridSize = size;
+    this.pathfindingSystem.setGridSize(size);
   }
 }
