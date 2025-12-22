@@ -64,6 +64,17 @@ export class VehicleSystem {
   }
 
   /**
+   * Find a spawner-despawner pair by either spawner or despawner coordinates
+   * Returns the pair if found, or null if not found
+   */
+  findPairByCell(cellX: number, cellY: number): SpawnerDespawnerPair | null {
+    return this.spawnerDespawnerPairs.find(
+      p => (p.spawnerX === cellX && p.spawnerY === cellY) ||
+           (p.despawnerX === cellX && p.despawnerY === cellY)
+    ) || null;
+  }
+
+  /**
    * Find an unreserved parking spot that is reachable from the given position
    */
   private findUnreservedParkingSpot(fromX: number, fromY: number): { x: number; y: number } | null {

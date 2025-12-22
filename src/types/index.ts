@@ -34,7 +34,9 @@ export interface Ploppable {
   y: number;
   cost: number;
   orientation?: number; // 0=north (default), 1=east, 2=south, 3=west
+  orientationType?: 'A' | 'B'; // A = border midpoint position, B = central with rotation indicator
   reserved?: boolean; // For parking spots: true if reserved by a vehicle
+  passable?: boolean; // Whether pedestrians and vehicles can pass through
 }
 
 export interface NPC {

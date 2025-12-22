@@ -40,8 +40,10 @@ export class DevModeScene extends Phaser.Scene {
   private ploppableOrientation: number = 0; // 0=north, 1=east, 2=south, 3=west
   private lastPaintedCell: { x: number; y: number } | null = null;
   private isVehicleSpawnerMode: boolean = false;
+  private isDemolishMode: boolean = false; // Demolish mode for removing ploppables
   private pendingSpawnerCell: { x: number; y: number } | null = null; // Cell where spawner was placed, waiting for despawner
   private vehicleSpawnerLabels: Phaser.GameObjects.Text[] = []; // Labels for spawner/despawner emojis
+  private ploppableLabels: Phaser.GameObjects.Text[] = []; // Labels for ploppable emojis (trash can, vending machine, etc.)
   private vehicleSystem!: VehicleSystem;
   private vehicleGraphics!: Phaser.GameObjects.Graphics;
   private pedestrianSystem!: PedestrianSystem;
@@ -131,6 +133,9 @@ export class DevModeScene extends Phaser.Scene {
     // Set up color selection buttons
     this.setupColorButtons();
     
+    // Set up demolish button
+    this.setupDemolishButton();
+    
     // Set up vehicle spawner button
     this.setupVehicleSpawnerButton();
     
@@ -174,6 +179,10 @@ export class DevModeScene extends Phaser.Scene {
     this.vehicleSpawnerLabels.forEach(label => label.destroy());
     this.vehicleSpawnerLabels = [];
     
+    // Clear existing ploppable labels
+    this.ploppableLabels.forEach(label => label.destroy());
+    this.ploppableLabels = [];
+    
     // Draw 10x10 isometric grid
     for (let x = 0; x < this.gridSize; x++) {
       for (let y = 0; y < this.gridSize; y++) {
@@ -182,6 +191,7 @@ export class DevModeScene extends Phaser.Scene {
         this.drawParkingSpotLines(x, y);
         this.drawVehicleSpawnerDespawner(x, y);
         this.drawPedestrianSpawner(x, y);
+        this.drawPloppable(x, y);
       }
     }
   }
@@ -441,9 +451,125 @@ export class DevModeScene extends Phaser.Scene {
     this.vehicleSpawnerLabels.push(label); // Reuse the same array for simplicity
   }
 
+  /**
+   * Draw ploppables with orientation types A and B
+   * Type A: Position at border midpoint (trash can, etc.)
+   * Type B: Central position with rotation indicator (vending machine, etc.)
+   */
+  private drawPloppable(gridX: number, gridY: number): void {
+    const cellData = this.getCellData(gridX, gridY);
+    if (!cellData?.ploppable) return;
+    
+    const ploppable = cellData.ploppable;
+    
+    // Skip ploppables that have their own rendering (parking spot, pedestrian spawner)
+    if (ploppable.type === 'Parking Spot' || ploppable.type === 'Pedestrian Spawner') return;
+    
+    // Convert grid coords to screen coords (isometric center)
+    const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + this.gridOffsetX;
+    const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + this.gridOffsetY;
+    
+    const orientation = ploppable.orientation || 0;
+    const orientationType = ploppable.orientationType || 'B'; // Default to Type B
+    
+    // Get emoji based on ploppable type
+    let emoji = '❓';
+    if (ploppable.type === 'Trash Can') emoji = '🗑️';
+    else if (ploppable.type === 'Vending Machine') emoji = '🥤';
+    
+    let labelX = centerX;
+    let labelY = centerY;
+    
+    if (orientationType === 'A') {
+      // Type A: Position at border midpoint
+      // Orientation 0 = top edge, 1 = right edge, 2 = bottom edge, 3 = left edge
+      const offsetDistance = 15; // Offset from center towards edge
+      
+      // Isometric edge offsets: adjust position towards edge midpoint
+      // In isometric, edges are at specific angles
+      switch (orientation) {
+        case 0: // Top edge (northwest direction)
+          labelX = centerX - offsetDistance * 0.5;
+          labelY = centerY - offsetDistance * 0.7;
+          break;
+        case 1: // Right edge (northeast direction)
+          labelX = centerX + offsetDistance * 0.5;
+          labelY = centerY - offsetDistance * 0.3;
+          break;
+        case 2: // Bottom edge (southeast direction)
+          labelX = centerX + offsetDistance * 0.5;
+          labelY = centerY + offsetDistance * 0.7;
+          break;
+        case 3: // Left edge (southwest direction)
+          labelX = centerX - offsetDistance * 0.5;
+          labelY = centerY + offsetDistance * 0.3;
+          break;
+      }
+      
+      // Create emoji label
+      const label = this.add.text(labelX, labelY, emoji, {
+        fontSize: '18px',
+      });
+      label.setOrigin(0.5, 0.5);
+      label.setDepth(3);
+      this.ploppableLabels.push(label);
+    } else {
+      // Type B: Central position with rotation indicator
+      // Create main emoji label at center
+      const label = this.add.text(labelX, labelY, emoji, {
+        fontSize: '24px',
+      });
+      label.setOrigin(0.5, 0.5);
+      label.setDepth(3);
+      this.ploppableLabels.push(label);
+      
+      // Draw orientation indicator (small dot at edge midpoint to show "front")
+      const indicatorDistance = 18;
+      let indicatorX = centerX;
+      let indicatorY = centerY;
+      
+      switch (orientation) {
+        case 0: // Front faces top edge
+          indicatorX = centerX - indicatorDistance * 0.5;
+          indicatorY = centerY - indicatorDistance * 0.7;
+          break;
+        case 1: // Front faces right edge
+          indicatorX = centerX + indicatorDistance * 0.5;
+          indicatorY = centerY - indicatorDistance * 0.3;
+          break;
+        case 2: // Front faces bottom edge
+          indicatorX = centerX + indicatorDistance * 0.5;
+          indicatorY = centerY + indicatorDistance * 0.7;
+          break;
+        case 3: // Front faces left edge
+          indicatorX = centerX - indicatorDistance * 0.5;
+          indicatorY = centerY + indicatorDistance * 0.3;
+          break;
+      }
+      
+      // Draw orientation indicator dot using graphics
+      this.parkingSpotGraphics.fillStyle(0x00ff00, 1);
+      this.parkingSpotGraphics.fillCircle(indicatorX, indicatorY, 3);
+    }
+  }
+
   private paintCell(gridX: number, gridY: number): void {
     // Check bounds
     if (gridX < 0 || gridX >= this.gridSize || gridY < 0 || gridY >= this.gridSize) return;
+    
+    // Handle demolish mode
+    if (this.isDemolishMode) {
+      // Check if we already demolished on this cell (prevent duplicates during drag)
+      if (this.lastPaintedCell && this.lastPaintedCell.x === gridX && this.lastPaintedCell.y === gridY) {
+        return;
+      }
+      
+      this.demolishAtCell(gridX, gridY);
+      
+      // Remember last painted cell
+      this.lastPaintedCell = { x: gridX, y: gridY };
+      return;
+    }
     
     // Handle permanent mode (toggle permanent status)
     if (this.isPermanentMode) {
@@ -555,6 +681,12 @@ export class DevModeScene extends Phaser.Scene {
         return;
       }
       
+      // Get ploppable properties from button data attributes
+      const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
+      const orientationType = button?.getAttribute('data-orientation-type') as 'A' | 'B' | undefined;
+      const passableAttr = button?.getAttribute('data-passable');
+      const passable = passableAttr === 'true';
+      
       // Create ploppable
       const ploppable: Ploppable = {
         id: `${this.selectedPloppableType}-${gridX}-${gridY}-${Date.now()}`,
@@ -562,7 +694,9 @@ export class DevModeScene extends Phaser.Scene {
         x: gridX,
         y: gridY,
         cost: 0, // Will be set later
-        orientation: this.ploppableOrientation
+        orientation: this.ploppableOrientation,
+        orientationType: orientationType,
+        passable: passable
       };
       
       // Store in cell data
@@ -653,7 +787,14 @@ export class DevModeScene extends Phaser.Scene {
       y: p.y + this.gridOffsetY
     }));
     
-    if (this.selectedPloppableType === 'Parking Spot') {
+    if (this.isDemolishMode) {
+      // Draw red border highlight for demolish mode
+      this.highlightGraphics.lineStyle(2, 0xff0000, 0.8);
+      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+    } else if (this.selectedPloppableType === 'Parking Spot') {
       // Draw parking spot preview (3 of 4 borders as white lines)
       this.highlightGraphics.lineStyle(2, 0xffffff, 1);
       
@@ -680,6 +821,50 @@ export class DevModeScene extends Phaser.Scene {
           offsetPoints[endIdx].y
         );
       });
+    } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine') {
+      // Draw preview for oriented ploppables
+      const centerX = (offsetPoints[0].x + offsetPoints[2].x) / 2;
+      const centerY = (offsetPoints[0].y + offsetPoints[2].y) / 2;
+      
+      // Get orientation type from button data
+      const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
+      const orientationType = button?.getAttribute('data-orientation-type') || 'B';
+      
+      // Draw preview text (semi-transparent)
+      // We'll just draw a highlight with orientation indicator
+      this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
+      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+      
+      // Draw orientation indicator
+      const indicatorDistance = orientationType === 'A' ? 15 : 18;
+      let indicatorX = centerX;
+      let indicatorY = centerY;
+      
+      switch (this.ploppableOrientation) {
+        case 0: // Top edge
+          indicatorX = centerX - indicatorDistance * 0.5;
+          indicatorY = centerY - indicatorDistance * 0.7;
+          break;
+        case 1: // Right edge
+          indicatorX = centerX + indicatorDistance * 0.5;
+          indicatorY = centerY - indicatorDistance * 0.3;
+          break;
+        case 2: // Bottom edge
+          indicatorX = centerX + indicatorDistance * 0.5;
+          indicatorY = centerY + indicatorDistance * 0.7;
+          break;
+        case 3: // Left edge
+          indicatorX = centerX - indicatorDistance * 0.5;
+          indicatorY = centerY + indicatorDistance * 0.3;
+          break;
+      }
+      
+      // Draw orientation indicator circle
+      this.highlightGraphics.fillStyle(0x00ff00, 0.8);
+      this.highlightGraphics.fillCircle(indicatorX, indicatorY, 4);
     } else if (this.isLineMode && edge !== undefined) {
       // Draw blue line on the specific edge (same style as yellow highlight)
       this.highlightGraphics.lineStyle(1.5, 0x0000ff, 0.6);
@@ -874,8 +1059,8 @@ export class DevModeScene extends Phaser.Scene {
         this.cameraStartX = this.cameras.main.scrollX;
         this.cameraStartY = this.cameras.main.scrollY;
       }
-      // Check if left mouse button (button 0) - paint, mark permanent, place ploppable, or place vehicle spawner/despawner
-      else if (pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode)) {
+      // Check if left mouse button (button 0) - paint, mark permanent, place ploppable, place vehicle spawner/despawner, or demolish
+      else if (pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode || this.isDemolishMode)) {
         // Update hover first to ensure hoveredEdge is set in line mode
         this.updateHoverHighlight(pointer);
         
@@ -916,7 +1101,7 @@ export class DevModeScene extends Phaser.Scene {
           this.cameraStartX - deltaX,
           this.cameraStartY - deltaY
         );
-      } else if (this.isPainting && pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode)) {
+      } else if (this.isPainting && pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode || this.isDemolishMode)) {
         // Paint while dragging
         if (this.isLineMode) {
           // In line mode, paint based on hovered edge
@@ -1004,6 +1189,13 @@ export class DevModeScene extends Phaser.Scene {
             }
           }
           
+          // Disable demolish mode
+          this.isDemolishMode = false;
+          const demolishButton = document.getElementById('demolish-button');
+          if (demolishButton) {
+            demolishButton.classList.remove('selected');
+          }
+          
           // Clear hover state when switching modes
           this.clearHighlight();
           
@@ -1040,6 +1232,13 @@ export class DevModeScene extends Phaser.Scene {
           const pedestrianButton = document.getElementById('pedestrian-spawner-button');
           if (pedestrianButton) {
             pedestrianButton.classList.remove('selected');
+          }
+          
+          // Clear demolish mode
+          this.isDemolishMode = false;
+          const demolishBtn = document.getElementById('demolish-button');
+          if (demolishBtn) {
+            demolishBtn.classList.remove('selected');
           }
           
           // Set ploppable type
@@ -1087,6 +1286,14 @@ export class DevModeScene extends Phaser.Scene {
         }
         selectionInfo.style.display = 'block';
       }
+    } else if (this.isDemolishMode) {
+      // Show demolish mode info
+      if (selectionInfo && colorPreview && selectionName && selectionDescription) {
+        colorPreview.style.display = 'none';
+        selectionName.textContent = 'Demolish Tool';
+        selectionDescription.textContent = 'Click on any ploppable, vehicle spawner, or pedestrian spawner to remove it. Multi-part ploppables (like spawner/despawner pairs) will be fully removed.';
+        selectionInfo.style.display = 'block';
+      }
     } else if (this.selectedPloppableType) {
       // Show ploppable info
       if (selectionInfo && colorPreview && selectionName && selectionDescription) {
@@ -1103,7 +1310,9 @@ export class DevModeScene extends Phaser.Scene {
           if (button) {
             description = button.getAttribute('data-description') || '';
           }
-          if (this.selectedPloppableType === 'Parking Spot') {
+          if (this.selectedPloppableType === 'Parking Spot' || 
+              this.selectedPloppableType === 'Trash Can' || 
+              this.selectedPloppableType === 'Vending Machine') {
             description += '\n\nUse Q and E keys to rotate orientation.';
           }
         }
@@ -1140,6 +1349,13 @@ export class DevModeScene extends Phaser.Scene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine') {
+        // Rotate counter-clockwise (Q): 0 -> 3 -> 2 -> 1 -> 0
+        this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
+        // Update highlight if hovering over a cell
+        if (this.hoveredCell) {
+          this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+        }
       }
     });
     
@@ -1150,6 +1366,13 @@ export class DevModeScene extends Phaser.Scene {
         // Sequence: 0->2->3->1->0
         const rotationMap = [2, 0, 3, 1]; // maps current orientation to next when rotating CW
         this.ploppableOrientation = rotationMap[this.ploppableOrientation];
+        // Update highlight if hovering over a cell
+        if (this.hoveredCell) {
+          this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+        }
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine') {
+        // Rotate clockwise (E): 0 -> 1 -> 2 -> 3 -> 0
+        this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         // Update highlight if hovering over a cell
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
@@ -1298,6 +1521,7 @@ export class DevModeScene extends Phaser.Scene {
             this.isVehicleSpawnerMode = false;
             this.pendingSpawnerCell = null;
             this.isPermanentMode = false;
+            this.isDemolishMode = false;
             
             // Clear button selections
             document.querySelectorAll('.color-button').forEach(btn => {
@@ -1314,6 +1538,10 @@ export class DevModeScene extends Phaser.Scene {
             if (permanentButton) {
               permanentButton.classList.remove('selected');
               permanentButton.textContent = 'Mark Permanent';
+            }
+            const demolishButton = document.getElementById('demolish-button');
+            if (demolishButton) {
+              demolishButton.classList.remove('selected');
             }
           }
           
@@ -1344,6 +1572,7 @@ export class DevModeScene extends Phaser.Scene {
             this.isLineMode = false;
             this.selectedPloppableType = null;
             this.isPermanentMode = false;
+            this.isDemolishMode = false;
             
             // Clear button selections
             document.querySelectorAll('.color-button').forEach(btn => {
@@ -1356,6 +1585,10 @@ export class DevModeScene extends Phaser.Scene {
             if (permanentButton) {
               permanentButton.classList.remove('selected');
               permanentButton.textContent = 'Mark Permanent';
+            }
+            const demolishButton = document.getElementById('demolish-button');
+            if (demolishButton) {
+              demolishButton.classList.remove('selected');
             }
             
             // Reset pending state
@@ -1400,6 +1633,7 @@ export class DevModeScene extends Phaser.Scene {
             this.isLineMode = false;
             this.selectedPloppableType = null;
             this.isVehicleSpawnerMode = false;
+            this.isDemolishMode = false;
             this.pendingSpawnerCell = null;
             
             // Clear color button selections
@@ -1413,6 +1647,10 @@ export class DevModeScene extends Phaser.Scene {
             if (vehicleButton) {
               vehicleButton.classList.remove('selected');
             }
+            const demolishButton = document.getElementById('demolish-button');
+            if (demolishButton) {
+              demolishButton.classList.remove('selected');
+            }
             
             this.clearHighlight();
             this.updateSelectionInfo();
@@ -1420,6 +1658,119 @@ export class DevModeScene extends Phaser.Scene {
         });
       }
     });
+  }
+
+  private setupDemolishButton(): void {
+    this.time.delayedCall(100, () => {
+      const demolishButton = document.getElementById('demolish-button');
+      
+      if (demolishButton) {
+        demolishButton.addEventListener('click', () => {
+          // Toggle demolish mode
+          this.isDemolishMode = !this.isDemolishMode;
+          
+          // Update button appearance
+          if (this.isDemolishMode) {
+            demolishButton.classList.add('selected');
+            
+            // Clear other selections
+            this.selectedColor = null;
+            this.selectedColorName = null;
+            this.selectedColorDescription = null;
+            this.isLineMode = false;
+            this.selectedPloppableType = null;
+            this.isVehicleSpawnerMode = false;
+            this.isPermanentMode = false;
+            this.pendingSpawnerCell = null;
+            
+            // Clear button selections
+            document.querySelectorAll('.color-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            document.querySelectorAll('.ploppable-button').forEach(btn => {
+              btn.classList.remove('selected');
+            });
+            const vehicleButton = document.getElementById('vehicle-spawner-button');
+            if (vehicleButton) {
+              vehicleButton.classList.remove('selected');
+            }
+            const pedestrianButton = document.getElementById('pedestrian-spawner-button');
+            if (pedestrianButton) {
+              pedestrianButton.classList.remove('selected');
+            }
+            const permanentButton = document.getElementById('permanent-button');
+            if (permanentButton) {
+              permanentButton.classList.remove('selected');
+              permanentButton.textContent = 'Mark Permanent';
+            }
+            
+            this.clearHighlight();
+            this.updateSelectionInfo();
+          } else {
+            demolishButton.classList.remove('selected');
+            this.clearHighlight();
+            this.updateSelectionInfo();
+          }
+        });
+      }
+    });
+  }
+
+  /**
+   * Demolish a ploppable at the given cell
+   * Handles multi-part ploppables (vehicle spawner/despawner pairs)
+   */
+  private demolishAtCell(gridX: number, gridY: number): void {
+    const cellData = this.getCellData(gridX, gridY);
+    if (!cellData) return;
+    
+    let needsRedraw = false;
+    
+    // Check for vehicle spawner/despawner
+    if (cellData.vehicleSpawner || cellData.vehicleDespawner) {
+      // Find the associated pair
+      const pair = this.vehicleSystem.findPairByCell(gridX, gridY);
+      if (pair) {
+        // Remove both spawner and despawner cell data
+        const spawnerCellData = this.getCellData(pair.spawnerX, pair.spawnerY);
+        if (spawnerCellData) {
+          delete spawnerCellData.vehicleSpawner;
+          this.setCellData(pair.spawnerX, pair.spawnerY, spawnerCellData);
+        }
+        
+        const despawnerCellData = this.getCellData(pair.despawnerX, pair.despawnerY);
+        if (despawnerCellData) {
+          delete despawnerCellData.vehicleDespawner;
+          this.setCellData(pair.despawnerX, pair.despawnerY, despawnerCellData);
+        }
+        
+        // Remove from vehicle system
+        this.vehicleSystem.removeSpawnerDespawnerPair(pair.spawnerX, pair.spawnerY);
+        needsRedraw = true;
+      }
+    }
+    
+    // Check for ploppable
+    if (cellData.ploppable) {
+      const ploppableType = cellData.ploppable.type;
+      
+      // If it's a pedestrian spawner, remove from pedestrian system
+      if (ploppableType === 'Pedestrian Spawner') {
+        this.pedestrianSystem.removeDestination(gridX, gridY);
+      }
+      
+      // Remove ploppable from cell data
+      delete cellData.ploppable;
+      this.setCellData(gridX, gridY, cellData);
+      needsRedraw = true;
+    }
+    
+    // Redraw if something was demolished
+    if (needsRedraw) {
+      this.drawGrid();
+      this.drawLines();
+      this.drawRails();
+    }
   }
 
   private setupExportImportButtons(): void {

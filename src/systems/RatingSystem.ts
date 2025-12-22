@@ -1,3 +1,5 @@
+import { TimeSystem } from './TimeSystem';
+
 /**
  * RatingSystem - Singleton that manages lot ratings based on parker satisfaction
  * 
@@ -12,8 +14,8 @@ export class RatingSystem {
   private static instance: RatingSystem;
   
   // Active parkers: score accumulates during their lifecycle
-  // Key: vehicleId, Value: running score
-  private activeParkers: Map<string, number> = new Map();
+  // Key: vehicleId, Value: { score: number, dayRegistered: number }
+  private activeParkers: Map<string, { score: number; dayRegistered: number }> = new Map();
   
   // Finalized scores for today (parkers who have left)
   private dailyFinalizedScores: number[] = [];
@@ -23,6 +25,9 @@ export class RatingSystem {
   
   // Previous day's finalized rating (displayed after midnight)
   private previousDayRating: number = 0;
+  
+  // Track the current day to filter parkers by day
+  private currentDay: number = 0;
   
   private constructor() {}
   
@@ -41,7 +46,14 @@ export class RatingSystem {
    * @param initialScore - Starting score (100 if found spot, 0 if not)
    */
   registerParker(vehicleId: string, initialScore: number): void {
-    this.activeParkers.set(vehicleId, initialScore);
+    // Get current day from TimeSystem to ensure accuracy
+    const dayRegistered = TimeSystem.getInstance().getCurrentDay();
+    this.activeParkers.set(vehicleId, { 
+      score: initialScore, 
+      dayRegistered: dayRegistered
+    });
+    // Update currentDay to match (in case it's out of sync)
+    this.currentDay = dayRegistered;
     this.recalculateCurrentRating();
   }
   
@@ -53,9 +65,10 @@ export class RatingSystem {
    * @param scoreDelta - Amount to add (positive) or subtract (negative)
    */
   updateParkerScore(vehicleId: string, scoreDelta: number): void {
-    const currentScore = this.activeParkers.get(vehicleId);
-    if (currentScore !== undefined) {
-      this.activeParkers.set(vehicleId, currentScore + scoreDelta);
+    const parkerData = this.activeParkers.get(vehicleId);
+    if (parkerData !== undefined) {
+      parkerData.score += scoreDelta;
+      this.activeParkers.set(vehicleId, parkerData);
       this.recalculateCurrentRating();
     }
   }
@@ -67,19 +80,25 @@ export class RatingSystem {
    * @returns Current score or undefined if not found
    */
   getParkerScore(vehicleId: string): number | undefined {
-    return this.activeParkers.get(vehicleId);
+    return this.activeParkers.get(vehicleId)?.score;
   }
   
   /**
    * Finalize a parker's score when they despawn
    * Moves their score from active to finalized
+   * Only finalizes parkers from the current day
    * 
    * @param vehicleId - Vehicle ID of the parker leaving
    */
   finalizeParker(vehicleId: string): void {
-    const finalScore = this.activeParkers.get(vehicleId);
-    if (finalScore !== undefined) {
-      this.dailyFinalizedScores.push(finalScore);
+    const parkerData = this.activeParkers.get(vehicleId);
+    if (parkerData !== undefined) {
+      // Get current day from TimeSystem to ensure accuracy
+      const currentDay = TimeSystem.getInstance().getCurrentDay();
+      // Only finalize parkers from the current day
+      if (parkerData.dayRegistered === currentDay) {
+        this.dailyFinalizedScores.push(parkerData.score);
+      }
       this.activeParkers.delete(vehicleId);
       this.recalculateCurrentRating();
     }
@@ -87,11 +106,20 @@ export class RatingSystem {
   
   /**
    * Recalculate current rating based on all active and finalized scores
+   * Only includes parkers from the current day
    */
   private recalculateCurrentRating(): void {
-    // Combine active parker scores + finalized scores
-    const activeScores = Array.from(this.activeParkers.values());
-    const allScores = [...activeScores, ...this.dailyFinalizedScores];
+    // Get current day from TimeSystem to ensure accuracy
+    const currentDay = TimeSystem.getInstance().getCurrentDay();
+    this.currentDay = currentDay;
+    
+    // Only include active parkers registered on the current day
+    const currentDayActiveScores = Array.from(this.activeParkers.values())
+      .filter(parker => parker.dayRegistered === currentDay)
+      .map(parker => parker.score);
+    
+    // Combine current day's active parker scores + finalized scores
+    const allScores = [...currentDayActiveScores, ...this.dailyFinalizedScores];
     
     if (allScores.length === 0) {
       this.currentRating = 0;
@@ -112,11 +140,15 @@ export class RatingSystem {
   
   /**
    * Called at midnight - reset for new day
-   * Note: Active parkers carry over (they're still in the lot)
+   * Clears finalized scores and updates current day
+   * Active parkers from previous days remain but won't be included in new day's rating
+   * 
+   * @param newDay - The new day number from TimeSystem
    */
-  resetDailyScores(): void {
+  resetDailyScores(newDay: number): void {
     this.dailyFinalizedScores = [];
-    // Active parkers remain - they contribute to the new day
+    this.currentDay = newDay;
+    // Recalculate rating (will only include parkers from the new current day)
     this.recalculateCurrentRating();
   }
   
@@ -156,5 +188,6 @@ export class RatingSystem {
     this.dailyFinalizedScores = [];
     this.currentRating = 0;
     this.previousDayRating = 0;
+    this.currentDay = 0;
   }
 }

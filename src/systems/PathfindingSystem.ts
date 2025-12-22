@@ -209,6 +209,7 @@ export class PathfindingSystem {
       // For corridor edges, don't check parking spot borders - only fences/curbs/lane lines
       // Parking spot borders only block direct entry into the parking spot cell
       const checkParkingSpots = !isCorridor;
+      
       if (this.isEdgeBlocked(cellX, cellY, edge, entityType, checkParkingSpots, direction)) {
         return false;
       }
@@ -253,15 +254,19 @@ export class PathfindingSystem {
       case 'east':
         // Moving from (x,y) to (x+1,y) - down-right in screen space
         // Crosses right edge (1) of current cell = left edge (3) of target
-        // This is a direct crossing, not a corridor
+        // Check source cell's right edge (fence/curb/lane line)
         edges.push({ cellX: fromX, cellY: fromY, edge: 1, isCorridor: false });
+        // Also check target cell's left edge (3) for parking spot borders - this is the ENTRY EDGE
+        edges.push({ cellX: fromX + 1, cellY: fromY, edge: 3, isCorridor: false });
         break;
         
       case 'west':
         // Moving from (x,y) to (x-1,y) - up-left in screen space
         // Crosses left edge (3) of current cell = right edge (1) of target
-        // This is a direct crossing, not a corridor
+        // Check source cell's left edge (fence/curb/lane line)
         edges.push({ cellX: fromX, cellY: fromY, edge: 3, isCorridor: false });
+        // Also check target cell's right edge (1) for parking spot borders - this is the ENTRY EDGE
+        edges.push({ cellX: fromX - 1, cellY: fromY, edge: 1, isCorridor: false });
         break;
         
       case 'north':

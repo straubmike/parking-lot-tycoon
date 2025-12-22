@@ -63,7 +63,7 @@ export class GameSystems {
     
     // Check for midnight day change
     if (this.time.consumeDayChange()) {
-      this.rating.resetDailyScores();
+      this.rating.resetDailyScores(this.time.getCurrentDay());
     }
   }
 }
