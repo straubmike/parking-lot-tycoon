@@ -4,6 +4,7 @@ import { isoToScreen } from '@/utils/isometric';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { PedestrianSystem } from './PedestrianSystem';
 import { PathfindingSystem, EdgeBlockedCallback } from './PathfindingSystem';
+import { GameSystems } from '@/core/GameSystems';
 
 export class VehicleSystem {
   private vehicles: VehicleEntity[] = [];
@@ -195,6 +196,17 @@ export class VehicleSystem {
     vehicle.screenY = spawnScreenPos.y;
     
     this.vehicles.push(vehicle);
+    
+    // Register potential parker with rating system
+    if (isPotentialParker) {
+      if (reservedSpot !== null) {
+        // Found a spot - register with initial score of 100
+        GameSystems.rating.registerParker(vehicle.id, 100);
+      } else {
+        // No spot available - register with initial score of 0
+        GameSystems.rating.registerParker(vehicle.id, 0);
+      }
+    }
   }
 
   /**
@@ -222,6 +234,10 @@ export class VehicleSystem {
     
     this.vehicles.forEach(vehicle => {
       if (vehicle.state === 'despawning') {
+        // Finalize parker's score before removing
+        if (vehicle.isPotentialParker) {
+          GameSystems.rating.finalizeParker(vehicle.id);
+        }
         vehiclesToRemove.push(vehicle.id);
         return;
       }

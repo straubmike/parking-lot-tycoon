@@ -4,6 +4,7 @@ import { screenToIso, getIsometricTilePoints, isoToScreen } from '@/utils/isomet
 import { CellData, Ploppable, SpawnerDespawnerPair } from '@/types';
 import { VehicleSystem } from '@/systems/VehicleSystem';
 import { PedestrianSystem } from '@/systems/PedestrianSystem';
+import { GameSystems } from '@/core/GameSystems';
 
 export class DevModeScene extends Phaser.Scene {
   private gridSize = 10;
@@ -51,6 +52,9 @@ export class DevModeScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Initialize game systems for dev mode (starting budget of $10,000)
+    GameSystems.resetForChallenge(10000);
+    
     // Calculate grid center position to center it in the viewport
     this.centerGrid();
     
@@ -1446,17 +1450,47 @@ export class DevModeScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    // Update central game systems (time, rating triggers, etc.)
+    GameSystems.update(delta);
+    
     // Update vehicle system
     this.vehicleSystem.update(delta, this.gridSize, this.gridOffsetX, this.gridOffsetY);
     
     // Update pedestrian system
     this.pedestrianSystem.update(delta, this.gridSize, this.gridOffsetX, this.gridOffsetY);
     
+    // Update game UI displays
+    this.updateGameUI();
+    
     // Draw vehicles
     this.drawVehicles();
     
     // Draw pedestrians
     this.drawPedestrians();
+  }
+
+  /**
+   * Update game UI elements (clock, day, budget, rating)
+   */
+  private updateGameUI(): void {
+    const clockEl = document.getElementById('game-clock');
+    const dayEl = document.getElementById('game-day');
+    const budgetEl = document.getElementById('game-budget');
+    const ratingEl = document.getElementById('game-rating');
+    
+    if (clockEl) {
+      clockEl.textContent = GameSystems.time.getTimeString();
+    }
+    if (dayEl) {
+      dayEl.textContent = `Day ${GameSystems.time.getCurrentDay()}`;
+    }
+    if (budgetEl) {
+      budgetEl.textContent = `$${GameSystems.economy.getMoney().toLocaleString()}`;
+    }
+    if (ratingEl) {
+      const current = GameSystems.rating.getCurrentRating();
+      ratingEl.textContent = current.toFixed(0);
+    }
   }
 
   /**
@@ -1680,16 +1714,16 @@ export class DevModeScene extends Phaser.Scene {
     
     // Check parking spot borders (only block vehicles, and only if checkParkingSpots is true)
     // Parking spot borders only block direct entry into the spot, not corridor movement
+    // NOTE: We only check the current cell, not neighbors, because parking spot borders
+    // should only block entry into the parking spot cell itself, not movement past adjacent cells
     if (entityType === 'vehicle' && checkParkingSpots) {
       if (this.isParkingSpotEdgeBlocked(cellX, cellY, edge)) {
         return true;
       }
       
-      // Also check the neighbor cell that shares this edge
-      const neighbor = this.getNeighborCellForEdge(cellX, cellY, edge);
-      if (neighbor && this.isParkingSpotEdgeBlocked(neighbor.cellX, neighbor.cellY, neighbor.edge)) {
-        return true;
-      }
+      // REMOVED: Neighbor cell check for parking spots
+      // This was incorrectly blocking vehicles from passing by parking spots in adjacent cells.
+      // Parking spot borders should only block entry into the parking spot cell itself.
     }
     
     return false;
