@@ -452,8 +452,146 @@ export class DevModeScene extends Phaser.Scene {
   }
 
   /**
+   * Calculate position along rail intersection for orientation-based ploppables
+   * The rails form an X intersection at the cell center. Each orientation corresponds
+   * to one of the four extremities of this X (along the rail directions).
+   * @param centerX Screen X coordinate of cell center
+   * @param centerY Screen Y coordinate of cell center
+   * @param orientation 0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left
+   * @param distance Distance from center along the rail direction
+   * @returns Screen coordinates for the position
+   */
+  private getOrientationPosition(centerX: number, centerY: number, orientation: number, distance: number): { x: number; y: number } {
+    // Calculate the direction vector length
+    const directionLength = Math.sqrt(TILE_WIDTH * TILE_WIDTH + TILE_HEIGHT * TILE_HEIGHT) / 2;
+    
+    // Unit vectors for each orientation (along rail directions from center)
+    let dirX: number, dirY: number;
+    switch (orientation) {
+      case 0: // Top-left: along row rail towards smaller X (decreasing X, same Y)
+        dirX = -TILE_WIDTH / 2;
+        dirY = -TILE_HEIGHT / 2;
+        break;
+      case 1: // Top-right: along column rail towards smaller Y (same X, decreasing Y)
+        dirX = TILE_WIDTH / 2;
+        dirY = -TILE_HEIGHT / 2;
+        break;
+      case 2: // Bottom-right: along row rail towards larger X (increasing X, same Y)
+        dirX = TILE_WIDTH / 2;
+        dirY = TILE_HEIGHT / 2;
+        break;
+      case 3: // Bottom-left: along column rail towards larger Y (same X, increasing Y)
+        dirX = -TILE_WIDTH / 2;
+        dirY = TILE_HEIGHT / 2;
+        break;
+      default:
+        dirX = 0;
+        dirY = 0;
+    }
+    
+    // Normalize the direction vector and scale by distance
+    const scale = distance / directionLength;
+    return {
+      x: centerX + dirX * scale,
+      y: centerY + dirY * scale
+    };
+  }
+  
+  /**
+   * Calculate position for Type A ploppables (trash can, etc.)
+   * Positions are at the extremities of the rail X intersection, but inside the cell.
+   * Uses a percentage of the distance from center to edge to ensure positions stay well inside.
+   * @param centerX Screen X coordinate of cell center
+   * @param centerY Screen Y coordinate of cell center
+   * @param orientation 0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left
+   * @returns Screen coordinates for the position
+   */
+  private getTypeAPosition(centerX: number, centerY: number, orientation: number): { x: number; y: number } {
+    // The distance from center to edge along each rail direction is directionLength
+    const directionLength = Math.sqrt(TILE_WIDTH * TILE_WIDTH + TILE_HEIGHT * TILE_HEIGHT) / 2;
+    
+    // Use 40% of the distance from center to edge to ensure positions are subtly inside the cell borders
+    const distanceFromCenter = directionLength * 0.4;
+    return this.getOrientationPosition(centerX, centerY, orientation, distanceFromCenter);
+  }
+
+  /**
+   * Draw an arrow from the center pointing in the orientation direction
+   * Used for Type B ploppables (vending machine, etc.) to show facing direction
+   * @param graphics Graphics object to draw on
+   * @param centerX Screen X coordinate of cell center
+   * @param centerY Screen Y coordinate of cell center
+   * @param orientation 0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left
+   * @param arrowLength Length of the arrow shaft in pixels
+   * @param color Color of the arrow (hex number)
+   * @param alpha Alpha/opacity of the arrow (0-1)
+   */
+  private drawOrientationArrow(
+    graphics: Phaser.GameObjects.Graphics,
+    centerX: number,
+    centerY: number,
+    orientation: number,
+    arrowLength: number = 20,
+    color: number = 0x00ff00,
+    alpha: number = 1.0
+  ): void {
+    // Get the direction vector for this orientation
+    const directionLength = Math.sqrt(TILE_WIDTH * TILE_WIDTH + TILE_HEIGHT * TILE_HEIGHT) / 2;
+    let dirX: number, dirY: number;
+    switch (orientation) {
+      case 0: // Top-left
+        dirX = -TILE_WIDTH / 2;
+        dirY = -TILE_HEIGHT / 2;
+        break;
+      case 1: // Top-right
+        dirX = TILE_WIDTH / 2;
+        dirY = -TILE_HEIGHT / 2;
+        break;
+      case 2: // Bottom-right
+        dirX = TILE_WIDTH / 2;
+        dirY = TILE_HEIGHT / 2;
+        break;
+      case 3: // Bottom-left
+        dirX = -TILE_WIDTH / 2;
+        dirY = TILE_HEIGHT / 2;
+        break;
+      default:
+        dirX = 0;
+        dirY = 0;
+    }
+    
+    // Normalize the direction vector
+    const scale = arrowLength / directionLength;
+    const endX = centerX + dirX * scale;
+    const endY = centerY + dirY * scale;
+    
+    // Draw arrow shaft
+    graphics.lineStyle(2, color, alpha);
+    graphics.lineBetween(centerX, centerY, endX, endY);
+    
+    // Draw arrowhead (small triangle at the end)
+    const arrowheadSize = 6;
+    const arrowheadAngle = Math.atan2(dirY, dirX);
+    
+    // Calculate arrowhead points (perpendicular to the direction)
+    const perpAngle = arrowheadAngle + Math.PI / 2;
+    const arrowheadBaseX = endX - Math.cos(arrowheadAngle) * arrowheadSize;
+    const arrowheadBaseY = endY - Math.sin(arrowheadAngle) * arrowheadSize;
+    
+    const arrowheadLeftX = arrowheadBaseX + Math.cos(perpAngle) * arrowheadSize * 0.5;
+    const arrowheadLeftY = arrowheadBaseY + Math.sin(perpAngle) * arrowheadSize * 0.5;
+    
+    const arrowheadRightX = arrowheadBaseX - Math.cos(perpAngle) * arrowheadSize * 0.5;
+    const arrowheadRightY = arrowheadBaseY - Math.sin(perpAngle) * arrowheadSize * 0.5;
+    
+    // Fill arrowhead triangle
+    graphics.fillStyle(color, alpha);
+    graphics.fillTriangle(endX, endY, arrowheadLeftX, arrowheadLeftY, arrowheadRightX, arrowheadRightY);
+  }
+
+  /**
    * Draw ploppables with orientation types A and B
-   * Type A: Position at border midpoint (trash can, etc.)
+   * Type A: Position along rail extremities (trash can, etc.) - origin at mid-bottom of sprite
    * Type B: Central position with rotation indicator (vending machine, etc.)
    */
   private drawPloppable(gridX: number, gridY: number): void {
@@ -477,79 +615,38 @@ export class DevModeScene extends Phaser.Scene {
     if (ploppable.type === 'Trash Can') emoji = '🗑️';
     else if (ploppable.type === 'Vending Machine') emoji = '🥤';
     
-    let labelX = centerX;
-    let labelY = centerY;
-    
     if (orientationType === 'A') {
-      // Type A: Position at border midpoint
-      // Orientation 0 = top edge, 1 = right edge, 2 = bottom edge, 3 = left edge
-      const offsetDistance = 15; // Offset from center towards edge
+      // Type A: Position along rail extremities, but inside the cell
+      // Uses 50% of the distance from center to edge to ensure positions stay well inside
+      const position = this.getTypeAPosition(centerX, centerY, orientation);
       
-      // Isometric edge offsets: adjust position towards edge midpoint
-      // In isometric, edges are at specific angles
-      switch (orientation) {
-        case 0: // Top edge (northwest direction)
-          labelX = centerX - offsetDistance * 0.5;
-          labelY = centerY - offsetDistance * 0.7;
-          break;
-        case 1: // Right edge (northeast direction)
-          labelX = centerX + offsetDistance * 0.5;
-          labelY = centerY - offsetDistance * 0.3;
-          break;
-        case 2: // Bottom edge (southeast direction)
-          labelX = centerX + offsetDistance * 0.5;
-          labelY = centerY + offsetDistance * 0.7;
-          break;
-        case 3: // Left edge (southwest direction)
-          labelX = centerX - offsetDistance * 0.5;
-          labelY = centerY + offsetDistance * 0.3;
-          break;
-      }
-      
-      // Create emoji label
-      const label = this.add.text(labelX, labelY, emoji, {
+      // Create emoji label - origin at mid-bottom for Type A (trash can)
+      const label = this.add.text(position.x, position.y, emoji, {
         fontSize: '18px',
       });
-      label.setOrigin(0.5, 0.5);
+      label.setOrigin(0.5, 1.0); // Mid-bottom origin
       label.setDepth(3);
       this.ploppableLabels.push(label);
     } else {
-      // Type B: Central position with rotation indicator
+      // Type B: Central position with rotation indicator (arrow showing facing direction)
       // Create main emoji label at center
-      const label = this.add.text(labelX, labelY, emoji, {
+      const label = this.add.text(centerX, centerY, emoji, {
         fontSize: '24px',
       });
       label.setOrigin(0.5, 0.5);
       label.setDepth(3);
       this.ploppableLabels.push(label);
       
-      // Draw orientation indicator (small dot at edge midpoint to show "front")
-      const indicatorDistance = 18;
-      let indicatorX = centerX;
-      let indicatorY = centerY;
-      
-      switch (orientation) {
-        case 0: // Front faces top edge
-          indicatorX = centerX - indicatorDistance * 0.5;
-          indicatorY = centerY - indicatorDistance * 0.7;
-          break;
-        case 1: // Front faces right edge
-          indicatorX = centerX + indicatorDistance * 0.5;
-          indicatorY = centerY - indicatorDistance * 0.3;
-          break;
-        case 2: // Front faces bottom edge
-          indicatorX = centerX + indicatorDistance * 0.5;
-          indicatorY = centerY + indicatorDistance * 0.7;
-          break;
-        case 3: // Front faces left edge
-          indicatorX = centerX - indicatorDistance * 0.5;
-          indicatorY = centerY + indicatorDistance * 0.3;
-          break;
-      }
-      
-      // Draw orientation indicator dot using graphics
-      this.parkingSpotGraphics.fillStyle(0x00ff00, 1);
-      this.parkingSpotGraphics.fillCircle(indicatorX, indicatorY, 3);
+      // Draw orientation arrow pointing in the facing direction
+      this.drawOrientationArrow(
+        this.parkingSpotGraphics,
+        centerX,
+        centerY,
+        orientation,
+        20, // arrow length
+        0x00ff00, // green color
+        1.0 // full opacity
+      );
     }
   }
 
@@ -838,33 +935,24 @@ export class DevModeScene extends Phaser.Scene {
       this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
       this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
       
-      // Draw orientation indicator
-      const indicatorDistance = orientationType === 'A' ? 15 : 18;
-      let indicatorX = centerX;
-      let indicatorY = centerY;
-      
-      switch (this.ploppableOrientation) {
-        case 0: // Top edge
-          indicatorX = centerX - indicatorDistance * 0.5;
-          indicatorY = centerY - indicatorDistance * 0.7;
-          break;
-        case 1: // Right edge
-          indicatorX = centerX + indicatorDistance * 0.5;
-          indicatorY = centerY - indicatorDistance * 0.3;
-          break;
-        case 2: // Bottom edge
-          indicatorX = centerX + indicatorDistance * 0.5;
-          indicatorY = centerY + indicatorDistance * 0.7;
-          break;
-        case 3: // Left edge
-          indicatorX = centerX - indicatorDistance * 0.5;
-          indicatorY = centerY + indicatorDistance * 0.3;
-          break;
+      // Draw orientation indicator using the same calculation as actual placement
+      if (orientationType === 'A') {
+        // For Type A, show dot at the position
+        const indicatorPos = this.getTypeAPosition(centerX, centerY, this.ploppableOrientation);
+        this.highlightGraphics.fillStyle(0x00ff00, 0.8);
+        this.highlightGraphics.fillCircle(indicatorPos.x, indicatorPos.y, 4);
+      } else {
+        // For Type B, show arrow pointing in the facing direction
+        this.drawOrientationArrow(
+          this.highlightGraphics,
+          centerX,
+          centerY,
+          this.ploppableOrientation,
+          20, // arrow length
+          0x00ff00, // green color
+          0.8 // semi-transparent for preview
+        );
       }
-      
-      // Draw orientation indicator circle
-      this.highlightGraphics.fillStyle(0x00ff00, 0.8);
-      this.highlightGraphics.fillCircle(indicatorX, indicatorY, 4);
     } else if (this.isLineMode && edge !== undefined) {
       // Draw blue line on the specific edge (same style as yellow highlight)
       this.highlightGraphics.lineStyle(1.5, 0x0000ff, 0.6);
@@ -1833,7 +1921,7 @@ export class DevModeScene extends Phaser.Scene {
       clockEl.textContent = GameSystems.time.getTimeString();
     }
     if (dayEl) {
-      dayEl.textContent = `Day ${GameSystems.time.getCurrentDay()}`;
+      dayEl.textContent = GameSystems.time.getCurrentDay().toString();
     }
     if (budgetEl) {
       budgetEl.textContent = `$${GameSystems.economy.getMoney().toLocaleString()}`;
