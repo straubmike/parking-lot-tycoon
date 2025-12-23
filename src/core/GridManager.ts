@@ -49,30 +49,35 @@ export class GridManager {
     // Edge relationships in isometric grid (based on actual cell positions):
     // - Left edge (3) of (x,y) = Right edge (1) of (x-1, y) [horizontal neighbor]
     // - Right edge (1) of (x,y) = Left edge (3) of (x+1, y) [horizontal neighbor]
-    // - Top edge (0) of (x,y) = Bottom edge (2) of (x-1, y+1) [diagonal neighbor]
-    // - Bottom edge (2) of (x,y) = Top edge (0) of (x+1, y-1) [diagonal neighbor]
+    // - Top edge (0) of (x,y) = Bottom edge (2) of (x, y-1) [vertical neighbor]
+    // - Bottom edge (2) of (x,y) = Top edge (0) of (x, y+1) [vertical neighbor]
     
-    if (edge === 0) { // top - shared with bottom of (x-1, y+1)
-      const neighborX = cellX - 1;
-      const neighborY = cellY + 1;
-      if (neighborX >= 0 && neighborY < this.gridSize) {
+    let neighborX: number | undefined, neighborY: number | undefined, neighborEdge: number | undefined;
+    if (edge === 0) { // top - shared with bottom of (x, y-1)
+      neighborX = cellX;
+      neighborY = cellY - 1;
+      neighborEdge = 2;
+      if (neighborY >= 0) {
         allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 2)); // bottom
       }
     } else if (edge === 1) { // right - shared with left of (x+1, y) [fixed: horizontal, not diagonal]
-      const neighborX = cellX + 1;
-      const neighborY = cellY;
+      neighborX = cellX + 1;
+      neighborY = cellY;
+      neighborEdge = 3;
       if (neighborX < this.gridSize && neighborY >= 0 && neighborY < this.gridSize) {
         allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 3)); // left
       }
-    } else if (edge === 2) { // bottom - shared with top of (x+1, y-1)
-      const neighborX = cellX + 1;
-      const neighborY = cellY - 1;
-      if (neighborX < this.gridSize && neighborY >= 0) {
+    } else if (edge === 2) { // bottom - shared with top of (x, y+1)
+      neighborX = cellX;
+      neighborY = cellY + 1;
+      neighborEdge = 0;
+      if (neighborY < this.gridSize) {
         allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 0)); // top
       }
     } else if (edge === 3) { // left - shared with right of (x-1, y) [fixed: horizontal, not diagonal]
-      const neighborX = cellX - 1;
-      const neighborY = cellY;
+      neighborX = cellX - 1;
+      neighborY = cellY;
+      neighborEdge = 1;
       if (neighborX >= 0 && neighborY >= 0 && neighborY < this.gridSize) {
         allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 1)); // right
       }

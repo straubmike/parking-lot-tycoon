@@ -28,6 +28,7 @@ export class DevModeScene extends BaseGameplayScene {
   private selectedPloppableType: string | null = null;
   private ploppableOrientation: number = 0; // 0=north, 1=east, 2=south, 3=west
   private lastPaintedCell: { x: number; y: number } | null = null;
+  private lastPaintedEdgeKey: string | null = null; // Track last painted edge segment key for duplicate prevention
   private isVehicleSpawnerMode: boolean = false;
   private isDemolishMode: boolean = false; // Demolish mode for removing ploppables
   private pendingSpawnerCell: { x: number; y: number } | null = null; // Cell where spawner was placed, waiting for despawner
@@ -231,18 +232,19 @@ export class DevModeScene extends BaseGameplayScene {
     if (this.isLineMode && this.hoveredEdge) {
       const { cellX, cellY, edge } = this.hoveredEdge;
       
-      // Check if we already toggled this exact edge (prevent duplicates during drag)
-      if (this.lastPaintedCell && 
-          this.lastPaintedCell.x === cellX && 
-          this.lastPaintedCell.y === cellY) {
+      // Find existing key if any (check all possible keys for shared edges)
+      // This is the actual segment key that exists in storage (could be from current cell or adjacent cell)
+      const existingKey = this.gridManager.findExistingBorderSegmentKey(cellX, cellY, edge);
+      
+      // Check if we already toggled this exact edge segment (prevent duplicates during drag)
+      // Use the existing key if it exists, otherwise use the current cell's key
+      const edgeKeyToCheck = existingKey || this.gridManager.getBorderSegmentKey(cellX, cellY, edge);
+      if (this.lastPaintedEdgeKey === edgeKeyToCheck) {
         return;
       }
       
       // Use the current cell's key for storage (so coordinates match what user sees)
       const currentKey = this.gridManager.getBorderSegmentKey(cellX, cellY, edge);
-      
-      // Find existing key if any (check all possible keys for shared edges)
-      const existingKey = this.gridManager.findExistingBorderSegmentKey(cellX, cellY, edge);
       const existingEdgeColor = existingKey ? this.gridManager.getBorderSegment(existingKey) : undefined;
       
       // Toggle logic:
@@ -265,7 +267,8 @@ export class DevModeScene extends BaseGameplayScene {
       // Redraw lines
       this.redrawGrid();
       
-      // Remember last painted edge
+      // Remember last painted edge segment (use existing key if it exists, otherwise current key)
+      this.lastPaintedEdgeKey = existingKey || currentKey;
       this.lastPaintedCell = { x: cellX, y: cellY };
     } else if (!this.isLineMode) {
       // Check if we already painted this cell (prevent duplicates during drag)
@@ -482,6 +485,7 @@ export class DevModeScene extends BaseGameplayScene {
         
         this.isPainting = true;
         this.lastPaintedCell = null; // Reset for new paint stroke
+        this.lastPaintedEdgeKey = null; // Reset for new paint stroke
         if (this.isLineMode) {
           // In line mode, we need the hovered edge
           if (this.hoveredEdge) {
@@ -503,6 +507,7 @@ export class DevModeScene extends BaseGameplayScene {
       if (pointer.leftButtonReleased()) {
         this.isPainting = false;
         this.lastPaintedCell = null;
+        this.lastPaintedEdgeKey = null;
       }
     });
 
