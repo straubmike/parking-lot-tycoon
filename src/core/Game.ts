@@ -7,24 +7,21 @@ export class Game {
   constructor() {
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
-      width: window.innerWidth,
-      height: window.innerHeight,
+      width: GAME_CONFIG.width,
+      height: GAME_CONFIG.height,
       backgroundColor: GAME_CONFIG.backgroundColor,
       parent: 'game-container',
       scene: [], // Scenes will be added here
       scale: {
-        mode: Phaser.Scale.RESIZE,
-        width: window.innerWidth,
-        height: window.innerHeight,
+        mode: Phaser.Scale.NONE,
+        width: GAME_CONFIG.width,
+        height: GAME_CONFIG.height,
       },
     };
 
     this.phaserGame = new Phaser.Game(config);
     
-    // Handle window resize
-    window.addEventListener('resize', () => {
-      this.phaserGame.scale.resize(window.innerWidth, window.innerHeight);
-    });
+    // Canvas size is now fixed and won't resize with window
   }
 
   public getPhaserGame(): Phaser.Game {

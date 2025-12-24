@@ -11,7 +11,8 @@ export class GridInteractionHandler {
   static getCellAtPointer(
     pointer: Phaser.Input.Pointer,
     camera: Phaser.Cameras.Scene2D.Camera,
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     gridOffsetX: number,
     gridOffsetY: number
   ): { x: number; y: number } | null {
@@ -31,7 +32,7 @@ export class GridInteractionHandler {
     const gridY = Math.round(isoCoords.y);
     
     // Check if within grid bounds
-    if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize) {
+    if (gridX >= 0 && gridX < gridWidth && gridY >= 0 && gridY < gridHeight) {
       return { x: gridX, y: gridY };
     }
     return null;

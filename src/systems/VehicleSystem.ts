@@ -20,23 +20,27 @@ export class VehicleSystem {
   private getParkingSpots: () => Ploppable[];
   private pedestrianSystem?: PedestrianSystem;
   private pathfindingSystem: PathfindingSystem;
-  private gridSize: number;
+  private gridWidth: number;
+  private gridHeight: number;
 
   constructor(
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     getCellData: (x: number, y: number) => CellData | undefined,
     getParkingSpots: () => Ploppable[],
     isEdgeBlocked: EdgeBlockedCallback,
     pedestrianSystem?: PedestrianSystem
   ) {
-    this.gridSize = gridSize;
+    this.gridWidth = gridWidth;
+    this.gridHeight = gridHeight;
     this.getCellData = getCellData;
     this.getParkingSpots = getParkingSpots;
     this.pedestrianSystem = pedestrianSystem;
     
     // Initialize pathfinding system
     this.pathfindingSystem = new PathfindingSystem(
-      gridSize,
+      gridWidth,
+      gridHeight,
       getCellData,
       isEdgeBlocked
     );
@@ -223,7 +227,7 @@ export class VehicleSystem {
   /**
    * Update all vehicles and handle spawning
    */
-  update(delta: number, _gridSize: number, _gridOffsetX: number, _gridOffsetY: number): void {
+  update(delta: number, _gridWidth: number, _gridHeight: number, _gridOffsetX: number, _gridOffsetY: number): void {
     // Update spawn timers and spawn vehicles
     this.spawnerDespawnerPairs.forEach(pair => {
       const key = `${pair.spawnerX},${pair.spawnerY}`;

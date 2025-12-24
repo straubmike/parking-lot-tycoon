@@ -1,8 +1,8 @@
 import { GameConfig } from '@/types';
 
 export const GAME_CONFIG: GameConfig = {
-  width: 1200,
-  height: 800,
+  width: 2000,
+  height: 1600,
   backgroundColor: '#2a2a2a',
 };
 

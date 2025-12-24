@@ -55,15 +55,18 @@ const CARDINAL_DIRECTIONS = [
  * - Pedestrians: Blocked only by fences; ignore lane lines
  */
 export class PathfindingSystem {
-  private gridSize: number;
+  private gridWidth: number;
+  private gridHeight: number;
   private isEdgeBlocked: EdgeBlockedCallback;
 
   constructor(
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     _getCellData: (x: number, y: number) => CellData | undefined, // Kept for API compatibility
     isEdgeBlocked: EdgeBlockedCallback
   ) {
-    this.gridSize = gridSize;
+    this.gridWidth = gridWidth;
+    this.gridHeight = gridHeight;
     this.isEdgeBlocked = isEdgeBlocked;
   }
 
@@ -312,7 +315,7 @@ export class PathfindingSystem {
    * Check if coordinates are within grid bounds
    */
   private isInBounds(x: number, y: number): boolean {
-    return x >= 0 && x < this.gridSize && y >= 0 && y < this.gridSize;
+    return x >= 0 && x < this.gridWidth && y >= 0 && y < this.gridHeight;
   }
 
   /**
@@ -338,8 +341,9 @@ export class PathfindingSystem {
   /**
    * Update grid size (e.g., when loading a new map)
    */
-  setGridSize(size: number): void {
-    this.gridSize = size;
+  setGridSize(width: number, height: number): void {
+    this.gridWidth = width;
+    this.gridHeight = height;
   }
 }
 

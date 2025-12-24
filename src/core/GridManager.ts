@@ -13,10 +13,20 @@ import { CellData } from '@/types';
 export class GridManager {
   private cellData: Map<string, CellData> = new Map();
   private borderSegments: Map<string, number> = new Map();
-  private gridSize: number;
+  private gridWidth: number;
+  private gridHeight: number;
 
-  constructor(gridSize: number) {
-    this.gridSize = gridSize;
+  constructor(gridWidth: number, gridHeight: number) {
+    this.gridWidth = gridWidth;
+    this.gridHeight = gridHeight;
+  }
+
+  getGridWidth(): number {
+    return this.gridWidth;
+  }
+
+  getGridHeight(): number {
+    return this.gridHeight;
   }
 
   /**
@@ -64,21 +74,21 @@ export class GridManager {
       neighborX = cellX + 1;
       neighborY = cellY;
       neighborEdge = 3;
-      if (neighborX < this.gridSize && neighborY >= 0 && neighborY < this.gridSize) {
+      if (neighborX < this.gridWidth && neighborY >= 0 && neighborY < this.gridHeight) {
         allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 3)); // left
       }
     } else if (edge === 2) { // bottom - shared with top of (x, y+1)
       neighborX = cellX;
       neighborY = cellY + 1;
       neighborEdge = 0;
-      if (neighborY < this.gridSize) {
+      if (neighborY < this.gridHeight) {
         allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 0)); // top
       }
     } else if (edge === 3) { // left - shared with right of (x-1, y) [fixed: horizontal, not diagonal]
       neighborX = cellX - 1;
       neighborY = cellY;
       neighborEdge = 1;
-      if (neighborX >= 0 && neighborY >= 0 && neighborY < this.gridSize) {
+      if (neighborX >= 0 && neighborY >= 0 && neighborY < this.gridHeight) {
         allKeys.push(this.getBorderSegmentKey(neighborX, neighborY, 1)); // right
       }
     }
@@ -166,7 +176,7 @@ export class GridManager {
   /**
    * Serialize grid data to JSON string
    */
-  serializeGrid(gridSize: number): string {
+  serializeGrid(): string {
     // Convert Map to object for JSON serialization
     const gridData: Record<string, CellData> = {};
     this.cellData.forEach((value, key) => {
@@ -183,10 +193,13 @@ export class GridManager {
     });
     
     return JSON.stringify({
-      gridSize,
+      gridWidth: this.gridWidth,
+      gridHeight: this.gridHeight,
+      // Keep gridSize for backward compatibility
+      gridSize: Math.max(this.gridWidth, this.gridHeight),
       cellData: gridData,
       borderSegments: borderSegmentsData,
-      version: '3.0' // Updated to use simple border segment keys
+      version: '4.0' // Updated to support rectangular grids
     });
   }
 
@@ -201,22 +214,41 @@ export class GridManager {
       this.cellData.clear();
       this.borderSegments.clear();
       
-      // Load cell data
+      // Load cell data (only cells that fit in current grid dimensions)
       if (data.cellData && typeof data.cellData === 'object') {
         Object.entries(data.cellData).forEach(([key, value]) => {
-          this.cellData.set(key, value as CellData);
+          const [x, y] = key.split(',').map(Number);
+          // Only load cells that fit in the current grid
+          if (x >= 0 && x < this.gridWidth && y >= 0 && y < this.gridHeight) {
+            this.cellData.set(key, value as CellData);
+          }
         });
       }
       
-      // Load border segments (new format)
+      // Load border segments (only segments that fit in current grid dimensions)
       if (data.borderSegments && typeof data.borderSegments === 'object') {
         Object.entries(data.borderSegments).forEach(([key, value]) => {
-          this.borderSegments.set(key, value as number);
+          const parts = key.split(',');
+          if (parts.length === 3) {
+            const x = parseInt(parts[0], 10);
+            const y = parseInt(parts[1], 10);
+            // Only load segments that fit in the current grid
+            if (x >= 0 && x < this.gridWidth && y >= 0 && y < this.gridHeight) {
+              this.borderSegments.set(key, value as number);
+            }
+          }
         });
       } else if (data.edgeLines && typeof data.edgeLines === 'object') {
         // Migrate from old edgeLines format (version 2.0)
         Object.entries(data.edgeLines).forEach(([key, value]) => {
-          this.borderSegments.set(key, value as number);
+          const parts = key.split(',');
+          if (parts.length === 3) {
+            const x = parseInt(parts[0], 10);
+            const y = parseInt(parts[1], 10);
+            if (x >= 0 && x < this.gridWidth && y >= 0 && y < this.gridHeight) {
+              this.borderSegments.set(key, value as number);
+            }
+          }
         });
       } else if (data.version === '1.0' || (!data.borderSegments && !data.edgeLines)) {
         // Migrate from old format (cell-based edges) to new format

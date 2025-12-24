@@ -29,9 +29,15 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected pedestrianSystem!: PedestrianSystem;
   
   // Grid properties
-  protected gridSize: number;
+  protected gridWidth: number;
+  protected gridHeight: number;
   protected gridOffsetX: number = 0;
   protected gridOffsetY: number = 0;
+  
+  // Convenience getter for backward compatibility (returns max dimension)
+  protected get gridSize(): number {
+    return Math.max(this.gridWidth, this.gridHeight);
+  }
   
   // Graphics objects
   protected gridGraphics!: Phaser.GameObjects.Graphics;
@@ -47,14 +53,15 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected vehicleSpawnerLabels: Phaser.GameObjects.Text[] = [];
   protected ploppableLabels: Phaser.GameObjects.Text[] = [];
 
-  constructor(config: string | Phaser.Types.Scenes.SettingsConfig, gridSize: number) {
+  constructor(config: string | Phaser.Types.Scenes.SettingsConfig, gridWidth: number, gridHeight?: number) {
     super(config);
-    this.gridSize = gridSize;
+    this.gridWidth = gridWidth;
+    this.gridHeight = gridHeight ?? gridWidth; // Default to square if height not provided
   }
 
   create(): void {
     // Initialize grid manager
-    this.gridManager = new GridManager(this.gridSize);
+    this.gridManager = new GridManager(this.gridWidth, this.gridHeight);
     
     // Calculate grid center position
     this.centerGrid();
@@ -80,8 +87,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    */
   protected centerGrid(): void {
     // Calculate the center tile position in grid coordinates
-    const centerGridX = (this.gridSize - 1) / 2;
-    const centerGridY = (this.gridSize - 1) / 2;
+    const centerGridX = (this.gridWidth - 1) / 2;
+    const centerGridY = (this.gridHeight - 1) / 2;
     
     // Convert center grid position to screen coordinates (without offset)
     const centerScreenX = (centerGridX - centerGridY) * (TILE_WIDTH / 2);
@@ -155,7 +162,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     
     // Initialize pedestrian system first (needed by vehicle system)
     this.pedestrianSystem = new PedestrianSystem(
-      this.gridSize,
+      this.gridWidth,
+      this.gridHeight,
       (x: number, y: number) => this.gridManager.getCellData(x, y),
       () => this.getPedestrianDestinations(),
       isEdgeBlocked
@@ -163,7 +171,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     
     // Initialize vehicle system (with pedestrian system reference)
     this.vehicleSystem = new VehicleSystem(
-      this.gridSize,
+      this.gridWidth,
+      this.gridHeight,
       (x: number, y: number) => this.gridManager.getCellData(x, y),
       () => this.getAllParkingSpots(),
       isEdgeBlocked,
@@ -201,10 +210,10 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    */
   protected updateEntities(delta: number): void {
     // Update vehicle system
-    this.vehicleSystem.update(delta, this.gridSize, this.gridOffsetX, this.gridOffsetY);
+    this.vehicleSystem.update(delta, this.gridWidth, this.gridHeight, this.gridOffsetX, this.gridOffsetY);
     
     // Update pedestrian system
-    this.pedestrianSystem.update(delta, this.gridSize, this.gridOffsetX, this.gridOffsetY);
+    this.pedestrianSystem.update(delta, this.gridWidth, this.gridHeight, this.gridOffsetX, this.gridOffsetY);
   }
 
   /**
@@ -263,7 +272,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     GridRenderer.drawGrid(
       this.gridManager,
       this.gridGraphics,
-      this.gridSize,
+      this.gridWidth,
+      this.gridHeight,
       this.gridOffsetX,
       this.gridOffsetY
     );
@@ -276,7 +286,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     GridRenderer.drawLines(
       this.gridManager,
       this.linesGraphics,
-      this.gridSize,
+      this.gridWidth,
+      this.gridHeight,
       this.gridOffsetX,
       this.gridOffsetY
     );
@@ -288,7 +299,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected renderRails(): void {
     GridRenderer.drawRails(
       this.railGraphics,
-      this.gridSize,
+      this.gridWidth,
+      this.gridHeight,
       this.gridOffsetX,
       this.gridOffsetY
     );
@@ -298,8 +310,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    * Render permanent labels
    */
   protected renderPermanentLabels(): void {
-    for (let x = 0; x < this.gridSize; x++) {
-      for (let y = 0; y < this.gridSize; y++) {
+    for (let x = 0; x < this.gridWidth; x++) {
+      for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
         const label = GridRenderer.drawPermanentLabel(
           x,
@@ -320,8 +332,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    * Render spawners and despawners
    */
   protected renderSpawners(): void {
-    for (let x = 0; x < this.gridSize; x++) {
-      for (let y = 0; y < this.gridSize; y++) {
+    for (let x = 0; x < this.gridWidth; x++) {
+      for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
         
         // Vehicle spawner/despawner
@@ -358,8 +370,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    */
   protected renderPloppables(): void {
     // Draw parking spot lines
-    for (let x = 0; x < this.gridSize; x++) {
-      for (let y = 0; y < this.gridSize; y++) {
+    for (let x = 0; x < this.gridWidth; x++) {
+      for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
         GridRenderer.drawParkingSpotLines(
           x,
@@ -373,8 +385,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     }
     
     // Draw other ploppables
-    for (let x = 0; x < this.gridSize; x++) {
-      for (let y = 0; y < this.gridSize; y++) {
+    for (let x = 0; x < this.gridWidth; x++) {
+      for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
         const label = PloppableManager.drawPloppable(
           x,
@@ -419,8 +431,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected getAllParkingSpots(): Ploppable[] {
     const parkingSpots: Ploppable[] = [];
     
-    for (let x = 0; x < this.gridSize; x++) {
-      for (let y = 0; y < this.gridSize; y++) {
+    for (let x = 0; x < this.gridWidth; x++) {
+      for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
         const ploppable = cellData?.ploppable;
         if (ploppable && ploppable.type === 'Parking Spot') {
@@ -437,8 +449,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    */
   protected getPedestrianDestinations(): { x: number; y: number }[] {
     const destinations: { x: number; y: number }[] = [];
-    for (let x = 0; x < this.gridSize; x++) {
-      for (let y = 0; y < this.gridSize; y++) {
+    for (let x = 0; x < this.gridWidth; x++) {
+      for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
         if (cellData?.ploppable?.type === 'Pedestrian Spawner') {
           destinations.push({ x, y });

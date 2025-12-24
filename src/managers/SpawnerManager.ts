@@ -155,7 +155,8 @@ export class SpawnerManager {
    */
   static rebuildSpawnerPairsFromGrid(
     gridManager: GridManager,
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     vehicleSystem: VehicleSystem,
     pedestrianSystem: PedestrianSystem
   ): void {
@@ -166,8 +167,8 @@ export class SpawnerManager {
     const spawners: { x: number; y: number }[] = [];
     const despawners: { x: number; y: number }[] = [];
     
-    for (let x = 0; x < gridSize; x++) {
-      for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridWidth; x++) {
+      for (let y = 0; y < gridHeight; y++) {
         const cellData = gridManager.getCellData(x, y);
         if (cellData?.vehicleSpawner) {
           spawners.push({ x, y });
@@ -212,8 +213,8 @@ export class SpawnerManager {
     // Rebuild pedestrian spawners
     pedestrianSystem.clearPedestrians();
     
-    for (let x = 0; x < gridSize; x++) {
-      for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridWidth; x++) {
+      for (let y = 0; y < gridHeight; y++) {
         const cellData = gridManager.getCellData(x, y);
         if (cellData?.ploppable?.type === 'Pedestrian Spawner') {
           pedestrianSystem.addDestination(x, y);

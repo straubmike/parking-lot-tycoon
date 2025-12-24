@@ -6,6 +6,7 @@ import { GameSystems } from '@/core/GameSystems';
 import { PloppableManager } from '@/systems/PloppableManager';
 import { SpawnerManager } from '@/managers/SpawnerManager';
 import { GridInteractionHandler } from '@/systems/GridInteractionHandler';
+import { GridManager } from '@/core/GridManager';
 
 export class DevModeScene extends BaseGameplayScene {
   // Dev mode specific state
@@ -32,9 +33,11 @@ export class DevModeScene extends BaseGameplayScene {
   private isVehicleSpawnerMode: boolean = false;
   private isDemolishMode: boolean = false; // Demolish mode for removing ploppables
   private pendingSpawnerCell: { x: number; y: number } | null = null; // Cell where spawner was placed, waiting for despawner
+  private lastGridSizeX: number = 10; // Track last X input value
+  private lastGridSizeY: number = 10; // Track last Y input value
 
   constructor() {
-    super({ key: 'DevModeScene' }, 10); // gridSize = 10
+    super({ key: 'DevModeScene' }, 10, 10); // gridWidth = 10, gridHeight = 10
   }
 
   protected setupScene(): void {
@@ -61,6 +64,9 @@ export class DevModeScene extends BaseGameplayScene {
     
     // Set up export/import buttons
     this.setupExportImportButtons();
+    
+    // Set up grid resize controls
+    this.setupGridResizeControls();
   }
 
   // Grid rendering methods removed - now in BaseGameplayScene.render() and GridRenderer
@@ -77,7 +83,7 @@ export class DevModeScene extends BaseGameplayScene {
 
   private paintCell(gridX: number, gridY: number): void {
     // Check bounds
-    if (gridX < 0 || gridX >= this.gridSize || gridY < 0 || gridY >= this.gridSize) return;
+    if (gridX < 0 || gridX >= this.gridWidth || gridY < 0 || gridY >= this.gridHeight) return;
     
     // Handle demolish mode
     if (this.isDemolishMode) {
@@ -402,7 +408,8 @@ export class DevModeScene extends BaseGameplayScene {
     return GridInteractionHandler.getCellAtPointer(
       pointer,
       this.cameras.main,
-      this.gridSize,
+      this.gridWidth,
+      this.gridHeight,
       this.gridOffsetX,
       this.gridOffsetY
     );
@@ -803,7 +810,7 @@ export class DevModeScene extends BaseGameplayScene {
   }
 
   private exportGrid(): void {
-    const serialized = this.gridManager.serializeGrid(this.gridSize);
+    const serialized = this.gridManager.serializeGrid();
     const blob = new Blob([serialized], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -825,7 +832,8 @@ export class DevModeScene extends BaseGameplayScene {
         // Rebuild spawner-despawner pairs from loaded cell data
         SpawnerManager.rebuildSpawnerPairsFromGrid(
           this.gridManager,
-          this.gridSize,
+          this.gridWidth,
+          this.gridHeight,
           this.vehicleSystem,
           this.pedestrianSystem
         );
@@ -1125,6 +1133,131 @@ export class DevModeScene extends BaseGameplayScene {
         });
       }
     });
+  }
+
+  private setupGridResizeControls(): void {
+    this.time.delayedCall(100, () => {
+      const resizeButton = document.getElementById('resize-grid-button');
+      const gridSizeXInput = document.getElementById('grid-size-x') as HTMLInputElement;
+      const gridSizeYInput = document.getElementById('grid-size-y') as HTMLInputElement;
+
+      // Initialize input values with current grid dimensions
+      if (gridSizeXInput) {
+        gridSizeXInput.value = this.gridWidth.toString();
+      }
+      if (gridSizeYInput) {
+        gridSizeYInput.value = this.gridHeight.toString();
+      }
+      
+      // Initialize last values
+      this.lastGridSizeX = this.gridWidth;
+      this.lastGridSizeY = this.gridHeight;
+
+      if (resizeButton) {
+        resizeButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const newSizeX = parseInt(gridSizeXInput?.value || '10', 10);
+          const newSizeY = parseInt(gridSizeYInput?.value || '10', 10);
+
+          // Validate inputs
+          if (isNaN(newSizeX) || isNaN(newSizeY) || newSizeX < 1 || newSizeY < 1 || newSizeX > 100 || newSizeY > 100) {
+            alert('Please enter valid grid dimensions (1-100)');
+            return;
+          }
+
+          // Check if dimensions changed
+          if (newSizeX === this.gridWidth && newSizeY === this.gridHeight) {
+            // No change needed
+            return;
+          }
+          
+          // Resize the grid
+          try {
+            this.resizeGrid(newSizeX, newSizeY, newSizeX, newSizeY);
+          } catch (error) {
+            console.error('Error resizing grid:', error);
+            alert('Error resizing grid. Check console for details.');
+          }
+        });
+      } else {
+        console.error('Resize button not found!');
+      }
+    });
+  }
+
+  private resizeGrid(newWidth: number, newHeight: number, inputX: number, inputY: number): void {
+    // Store existing grid data
+    const serializedData = this.gridManager.serializeGrid();
+    
+    // Update grid dimensions
+    this.gridWidth = newWidth;
+    this.gridHeight = newHeight;
+    
+    // Update last input values
+    this.lastGridSizeX = inputX;
+    this.lastGridSizeY = inputY;
+    
+    // Create new GridManager with new dimensions
+    this.gridManager = new GridManager(this.gridWidth, this.gridHeight);
+    
+    // Try to deserialize the old data (will only load cells that fit in new grid)
+    const deserializeSuccess = this.gridManager.deserializeGrid(serializedData);
+    if (!deserializeSuccess) {
+      console.warn('Failed to deserialize grid data during resize');
+    }
+    
+    // Re-center the grid (this recalculates gridOffsetX and gridOffsetY based on new size)
+    // Do this BEFORE clearing graphics so offset is correct
+    this.centerGrid();
+    
+    // Clear all graphics
+    this.gridGraphics.clear();
+    this.linesGraphics.clear();
+    this.parkingSpotGraphics.clear();
+    this.railGraphics.clear();
+    this.vehicleGraphics.clear();
+    this.pedestrianGraphics.clear();
+    this.highlightGraphics.clear();
+    this.clearLabels();
+    
+    // Reinitialize systems with new grid dimensions (this creates new empty systems)
+    this.initializeSystems();
+    
+    // Rebuild spawner pairs from loaded data (after systems are reinitialized)
+    SpawnerManager.rebuildSpawnerPairsFromGrid(
+      this.gridManager,
+      this.gridWidth,
+      this.gridHeight,
+      this.vehicleSystem,
+      this.pedestrianSystem
+    );
+    
+    // Ensure graphics are visible
+    this.gridGraphics.setVisible(true);
+    this.linesGraphics.setVisible(true);
+    this.parkingSpotGraphics.setVisible(true);
+    this.railGraphics.setVisible(true);
+    this.vehicleGraphics.setVisible(true);
+    this.pedestrianGraphics.setVisible(true);
+    this.highlightGraphics.setVisible(true);
+    
+    // Redraw everything (this calls render() which draws all graphics)
+    this.render();
+    
+    // Update input values to show the actual grid dimensions
+    const gridSizeXInput = document.getElementById('grid-size-x') as HTMLInputElement;
+    const gridSizeYInput = document.getElementById('grid-size-y') as HTMLInputElement;
+    if (gridSizeXInput) {
+      gridSizeXInput.value = this.gridWidth.toString();
+    }
+    if (gridSizeYInput) {
+      gridSizeYInput.value = this.gridHeight.toString();
+    }
+    
+    // Update last values to match what's displayed
+    this.lastGridSizeX = this.gridWidth;
+    this.lastGridSizeY = this.gridHeight;
   }
 
   // update() and updateGameUI() removed - now in BaseGameplayScene

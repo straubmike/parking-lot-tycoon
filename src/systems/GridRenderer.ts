@@ -145,7 +145,8 @@ export class GridRenderer {
   static drawLines(
     gridManager: GridManager,
     graphics: Phaser.GameObjects.Graphics,
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     gridOffsetX: number,
     gridOffsetY: number
   ): void {
@@ -194,7 +195,8 @@ export class GridRenderer {
    */
   static drawRails(
     graphics: Phaser.GameObjects.Graphics,
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     gridOffsetX: number,
     gridOffsetY: number
   ): void {
@@ -210,10 +212,10 @@ export class GridRenderer {
     const lineAlpha = 0.5;
     
     // Draw row rails (diagonal lines through cell centers with same grid Y)
-    for (let y = 0; y < gridSize; y++) {
+    for (let y = 0; y < gridHeight; y++) {
       // Get the first and last cell centers in this row
       const firstCellCenter = isoToScreen(0, y);
-      const lastCellCenter = isoToScreen(gridSize - 1, y);
+      const lastCellCenter = isoToScreen(gridWidth - 1, y);
       
       const startX = firstCellCenter.x + gridOffsetX;
       const startY = firstCellCenter.y + gridOffsetY;
@@ -243,10 +245,10 @@ export class GridRenderer {
     }
     
     // Draw column rails (diagonal lines through cell centers with same grid X)
-    for (let x = 0; x < gridSize; x++) {
+    for (let x = 0; x < gridWidth; x++) {
       // Get the first and last cell centers in this column
       const firstCellCenter = isoToScreen(x, 0);
-      const lastCellCenter = isoToScreen(x, gridSize - 1);
+      const lastCellCenter = isoToScreen(x, gridHeight - 1);
       
       const startX = firstCellCenter.x + gridOffsetX;
       const startY = firstCellCenter.y + gridOffsetY;
@@ -314,15 +316,16 @@ export class GridRenderer {
   static drawGrid(
     gridManager: GridManager,
     graphics: Phaser.GameObjects.Graphics,
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     gridOffsetX: number,
     gridOffsetY: number
   ): void {
     graphics.clear();
     
     // Draw all cells
-    for (let x = 0; x < gridSize; x++) {
-      for (let y = 0; y < gridSize; y++) {
+    for (let x = 0; x < gridWidth; x++) {
+      for (let y = 0; y < gridHeight; y++) {
         const cellData = gridManager.getCellData(x, y);
         this.drawCell(x, y, cellData, graphics, gridOffsetX, gridOffsetY);
       }

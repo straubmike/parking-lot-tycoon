@@ -10,22 +10,26 @@ export class PedestrianSystem {
   private readonly maxSpeed: number = 40; // Maximum pixels per second
   private readonly minRespawnDuration: number = 5000; // Minimum respawn time (5 seconds)
   private readonly maxRespawnDuration: number = 15000; // Maximum respawn time (15 seconds)
-  private gridSize: number;
+  private gridWidth: number;
+  private gridHeight: number;
   private getDestinations: () => { x: number; y: number }[]; // Get all destination spawners
   private pathfindingSystem: PathfindingSystem;
 
   constructor(
-    gridSize: number,
+    gridWidth: number,
+    gridHeight: number,
     getCellData: (x: number, y: number) => CellData | undefined,
     getDestinations: () => { x: number; y: number }[],
     isEdgeBlocked: EdgeBlockedCallback
   ) {
-    this.gridSize = gridSize;
+    this.gridWidth = gridWidth;
+    this.gridHeight = gridHeight;
     this.getDestinations = getDestinations;
     
     // Initialize pathfinding system
     this.pathfindingSystem = new PathfindingSystem(
-      gridSize,
+      gridWidth,
+      gridHeight,
       getCellData,
       isEdgeBlocked
     );
@@ -127,7 +131,7 @@ export class PedestrianSystem {
   /**
    * Update all pedestrians
    */
-  update(delta: number, _gridSize: number, _gridOffsetX: number, _gridOffsetY: number): void {
+  update(delta: number, _gridWidth: number, _gridHeight: number, _gridOffsetX: number, _gridOffsetY: number): void {
     // Track pedestrians to remove (if their vehicle left without them somehow)
     const pedestriansToRemove: string[] = [];
     
