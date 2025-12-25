@@ -3,7 +3,7 @@ import { VehicleEntity } from '@/entities/Vehicle';
 import { isoToScreen } from '@/utils/isometric';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { PedestrianSystem } from './PedestrianSystem';
-import { PathfindingSystem, EdgeBlockedCallback } from './PathfindingSystem';
+import { PathfindingSystem, EdgeBlockedCallback, MoveCostCallback } from './PathfindingSystem';
 import { GameSystems } from '@/core/GameSystems';
 
 export class VehicleSystem {
@@ -29,6 +29,7 @@ export class VehicleSystem {
     getCellData: (x: number, y: number) => CellData | undefined,
     getParkingSpots: () => Ploppable[],
     isEdgeBlocked: EdgeBlockedCallback,
+    getMoveCost?: MoveCostCallback,
     pedestrianSystem?: PedestrianSystem
   ) {
     this.gridWidth = gridWidth;
@@ -42,7 +43,8 @@ export class VehicleSystem {
       gridWidth,
       gridHeight,
       getCellData,
-      isEdgeBlocked
+      isEdgeBlocked,
+      getMoveCost
     );
   }
 

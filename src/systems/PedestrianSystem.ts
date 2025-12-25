@@ -1,7 +1,10 @@
-import { CellData } from '@/types';
+import { CellData, Ploppable } from '@/types';
 import { PedestrianEntity } from '@/entities/Pedestrian';
 import { isoToScreen } from '@/utils/isometric';
 import { PathfindingSystem, EdgeBlockedCallback } from './PathfindingSystem';
+import { NeedsSystem } from './NeedsSystem';
+import { GridManager } from '@/core/GridManager';
+import { TimeSystem } from './TimeSystem';
 
 export class PedestrianSystem {
   private pedestrians: PedestrianEntity[] = [];
@@ -14,17 +17,23 @@ export class PedestrianSystem {
   private gridHeight: number;
   private getDestinations: () => { x: number; y: number }[]; // Get all destination spawners
   private pathfindingSystem: PathfindingSystem;
+  private gridManager: GridManager;
+  private needGenerationProbability: number; // Probability (0-1) that a pedestrian will have a need
 
   constructor(
     gridWidth: number,
     gridHeight: number,
     getCellData: (x: number, y: number) => CellData | undefined,
     getDestinations: () => { x: number; y: number }[],
-    isEdgeBlocked: EdgeBlockedCallback
+    isEdgeBlocked: EdgeBlockedCallback,
+    gridManager: GridManager,
+    needGenerationProbability: number = 0 // Default to 0 for backward compatibility
   ) {
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
     this.getDestinations = getDestinations;
+    this.gridManager = gridManager;
+    this.needGenerationProbability = needGenerationProbability;
     
     // Initialize pathfinding system
     this.pathfindingSystem = new PathfindingSystem(
@@ -49,6 +58,103 @@ export class PedestrianSystem {
   removeDestination(destinationX: number, destinationY: number): void {
     const key = `${destinationX},${destinationY}`;
     this.destinations.delete(key);
+  }
+
+  /**
+   * Generate a random need for a pedestrian based on probability
+   */
+  private generateNeed(): 'trash' | 'thirst' | null {
+    const randomValue = Math.random();
+    if (randomValue >= this.needGenerationProbability) {
+      return null;
+    }
+    
+    // Randomly choose between trash and thirst (50/50 chance of each)
+    const needType = Math.random() < 0.5 ? 'trash' : 'thirst';
+    return needType;
+  }
+
+  /**
+   * Find a ploppable that fulfills the given need and is reachable from the start position
+   */
+  private findReachablePloppableForNeed(
+    needType: 'trash' | 'thirst',
+    startX: number,
+    startY: number
+  ): Ploppable | null {
+    const ploppables = NeedsSystem.getPloppablesForNeed(
+      needType,
+      this.gridManager,
+      this.gridWidth,
+      this.gridHeight
+    );
+    
+    if (ploppables.length === 0) {
+      return null;
+    }
+    
+    // Shuffle ploppables and try to find a reachable one
+    const shuffled = [...ploppables].sort(() => Math.random() - 0.5);
+    
+    for (const ploppable of shuffled) {
+      const target = NeedsSystem.getNeedTargetPosition(ploppable);
+      const path = this.pathfindingSystem.findPath(
+        startX,
+        startY,
+        target.x,
+        target.y,
+        'pedestrian'
+      );
+      
+      if (path.length > 0 || (startX === target.x && startY === target.y)) {
+        return ploppable;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Set up a need for a pedestrian and find path to fulfillment location
+   */
+  private setupNeedForPedestrian(
+    pedestrian: PedestrianEntity,
+    startX: number,
+    startY: number
+  ): boolean {
+    const needType = this.generateNeed();
+    if (!needType) {
+      return false; // No need generated
+    }
+    
+    const ploppable = this.findReachablePloppableForNeed(needType, startX, startY);
+    if (!ploppable) {
+      return false; // No reachable ploppable found
+    }
+    
+    // Set need information
+    pedestrian.currentNeed = needType;
+    pedestrian.needTargetPloppableId = ploppable.id;
+    const target = NeedsSystem.getNeedTargetPosition(ploppable);
+    pedestrian.needTargetX = target.x;
+    pedestrian.needTargetY = target.y;
+    
+    // Find path to need fulfillment location
+    const pathToNeed = this.pathfindingSystem.findPath(
+      startX,
+      startY,
+      target.x,
+      target.y,
+      'pedestrian'
+    );
+    
+    if (pathToNeed.length > 0 || (startX === target.x && startY === target.y)) {
+      pedestrian.path = pathToNeed;
+      pedestrian.currentPathIndex = 0;
+      return true;
+    }
+    
+    return false; // Couldn't find path
   }
 
   /**
@@ -118,6 +224,17 @@ export class PedestrianSystem {
     pedestrian.y = vehicleY;
     pedestrian.state = 'spawning';
     
+    // Try to generate a need
+    const hasNeed = this.setupNeedForPedestrian(pedestrian, vehicleX, vehicleY);
+    if (hasNeed) {
+      // If has need, will go to need fulfillment first, then destination
+      pedestrian.state = 'spawning';
+    } else {
+      // No need, proceed normally to destination
+      pedestrian.path = pathToDestination;
+      pedestrian.currentPathIndex = 0;
+    }
+    
     this.pedestrians.push(pedestrian);
   }
 
@@ -136,9 +253,39 @@ export class PedestrianSystem {
     const pedestriansToRemove: string[] = [];
     
     this.pedestrians.forEach(pedestrian => {
-      // Handle spawning state - transition to going_to_destination
+      // Handle spawning state - transition to appropriate state based on needs
       if (pedestrian.state === 'spawning') {
-        pedestrian.state = 'going_to_destination';
+        if (pedestrian.currentNeed) {
+          pedestrian.state = 'going_to_need';
+        } else {
+          pedestrian.state = 'going_to_destination';
+        }
+      }
+      
+      // Handle going to need fulfillment location
+      if (pedestrian.state === 'going_to_need') {
+        this.updatePedestrianMoving(pedestrian, delta, 'need');
+      }
+      
+      // Handle fulfilling need (waiting at vending machine, or instant for trash can)
+      if (pedestrian.state === 'fulfilling_need') {
+        if (pedestrian.currentNeed === 'thirst' && pedestrian.needFulfillmentStartTime !== undefined) {
+          // Check if timer has expired (2 in-game minutes)
+          const timeSystem = TimeSystem.getInstance();
+          const currentGameTime = timeSystem.getTotalMinutes();
+          const elapsedMinutes = currentGameTime - pedestrian.needFulfillmentStartTime;
+          
+          // Handle day rollover (if game time rolled over midnight)
+          const elapsedMinutesAdjusted = elapsedMinutes < 0 ? elapsedMinutes + 1440 : elapsedMinutes;
+          
+          if (elapsedMinutesAdjusted >= 2) {
+            // Timer expired - need fulfilled, restore speed and continue to destination
+            this.completeNeedFulfillment(pedestrian);
+          }
+        } else if (pedestrian.currentNeed === 'trash') {
+          // Trash can is instant - need already fulfilled when reached
+          this.completeNeedFulfillment(pedestrian);
+        }
       }
       
       // Handle going to destination
@@ -152,38 +299,51 @@ export class PedestrianSystem {
           pedestrian.respawnTimer -= delta;
           
           if (pedestrian.respawnTimer <= 0) {
-            // Time to respawn - find path back to vehicle
-            const pathToVehicle = this.pathfindingSystem.findPath(
-              pedestrian.x,
-              pedestrian.y,
-              pedestrian.vehicleX,
-              pedestrian.vehicleY,
-              'pedestrian'
-            );
+            // Time to respawn - try to generate a need first
+            const hasNeed = this.setupNeedForPedestrian(pedestrian, pedestrian.x, pedestrian.y);
             
-            if (pathToVehicle.length > 0 || 
-                (pedestrian.x === pedestrian.vehicleX && pedestrian.y === pedestrian.vehicleY)) {
-              pedestrian.path = pathToVehicle;
-              pedestrian.currentPathIndex = 0;
+            if (hasNeed) {
+              // Has need - go to need fulfillment first
               pedestrian.state = 'respawning';
               pedestrian.respawnTimer = undefined;
             } else {
-              // Can't find path back to vehicle - teleport (edge case)
-              console.warn('Pedestrian cannot find path back to vehicle, teleporting');
-              pedestrian.x = pedestrian.vehicleX;
-              pedestrian.y = pedestrian.vehicleY;
-              const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
-              pedestrian.screenX = vehicleScreenPos.x;
-              pedestrian.screenY = vehicleScreenPos.y;
-              pedestrian.state = 'at_vehicle';
+              // No need - find path back to vehicle
+              const pathToVehicle = this.pathfindingSystem.findPath(
+                pedestrian.x,
+                pedestrian.y,
+                pedestrian.vehicleX,
+                pedestrian.vehicleY,
+                'pedestrian'
+              );
+              
+              if (pathToVehicle.length > 0 || 
+                  (pedestrian.x === pedestrian.vehicleX && pedestrian.y === pedestrian.vehicleY)) {
+                pedestrian.path = pathToVehicle;
+                pedestrian.currentPathIndex = 0;
+                pedestrian.state = 'respawning';
+                pedestrian.respawnTimer = undefined;
+              } else {
+                // Can't find path back to vehicle - teleport (edge case)
+                console.warn('Pedestrian cannot find path back to vehicle, teleporting');
+                pedestrian.x = pedestrian.vehicleX;
+                pedestrian.y = pedestrian.vehicleY;
+                const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
+                pedestrian.screenX = vehicleScreenPos.x;
+                pedestrian.screenY = vehicleScreenPos.y;
+                pedestrian.state = 'at_vehicle';
+              }
             }
           }
         }
       }
       
-      // Handle respawning state - transition to returning_to_vehicle
+      // Handle respawning state - transition to appropriate state based on needs
       if (pedestrian.state === 'respawning') {
-        pedestrian.state = 'returning_to_vehicle';
+        if (pedestrian.currentNeed) {
+          pedestrian.state = 'going_to_need';
+        } else {
+          pedestrian.state = 'returning_to_vehicle';
+        }
       }
       
       // Handle returning to vehicle
@@ -197,12 +357,12 @@ export class PedestrianSystem {
   }
 
   /**
-   * Update a pedestrian that is moving (either to destination or to vehicle)
+   * Update a pedestrian that is moving (either to destination, to vehicle, or to need fulfillment)
    */
   private updatePedestrianMoving(
     pedestrian: PedestrianEntity,
     delta: number,
-    targetType: 'destination' | 'vehicle'
+    targetType: 'destination' | 'vehicle' | 'need'
   ): void {
     if (pedestrian.path.length > 0 && pedestrian.currentPathIndex < pedestrian.path.length) {
       const target = pedestrian.path[pedestrian.currentPathIndex];
@@ -245,11 +405,99 @@ export class PedestrianSystem {
   }
 
   /**
+   * Complete need fulfillment and continue to destination
+   * After fulfilling a need, pedestrian should continue to their next destination:
+   * - If they spawned from vehicle (going to de/respawner): continue to de/respawner
+   * - If they respawned (going to vehicle): continue to vehicle
+   */
+  private completeNeedFulfillment(pedestrian: PedestrianEntity): void {
+    // Check for undefined/null explicitly (not falsy, since 0 is a valid coordinate)
+    if (!pedestrian.currentNeed) {
+      return;
+    }
+    
+    const fulfilledNeedType = pedestrian.currentNeed;
+    const ploppableId = pedestrian.needTargetPloppableId;
+    
+    // Determine next destination based on pedestrian's original destination
+    // If their destinationX/Y matches a de/respawner location, they spawned from vehicle and should continue to de/respawner
+    // If their destinationX/Y is undefined or they're coming from respawn phase, they should go to vehicle
+    // We check if destination matches any de/respawner to determine if they're in initial spawn phase
+    const destinations = this.getDestinations();
+    const destinationIsDeRespawner = pedestrian.destinationX !== undefined && pedestrian.destinationY !== undefined &&
+      destinations.some(d => d.x === pedestrian.destinationX && d.y === pedestrian.destinationY);
+    const shouldGoToVehicle = !destinationIsDeRespawner; // If destination is NOT a de/respawner, we're in respawn phase
+    
+    let targetX: number;
+    let targetY: number;
+    let nextState: 'going_to_destination' | 'returning_to_vehicle';
+    
+    if (shouldGoToVehicle) {
+      // Respawn phase: go to vehicle
+      targetX = pedestrian.vehicleX;
+      targetY = pedestrian.vehicleY;
+      nextState = 'returning_to_vehicle';
+    } else {
+      // Initial spawn phase: continue to de/respawner
+      if (pedestrian.destinationX === undefined || pedestrian.destinationY === undefined) {
+        return;
+      }
+      targetX = pedestrian.destinationX;
+      targetY = pedestrian.destinationY;
+      nextState = 'going_to_destination';
+    }
+    
+    // Clear need information
+    pedestrian.currentNeed = null;
+    pedestrian.needTargetPloppableId = undefined;
+    pedestrian.needTargetX = undefined;
+    pedestrian.needTargetY = undefined;
+    pedestrian.needFulfillmentTimer = undefined;
+    pedestrian.needFulfillmentStartTime = undefined;
+    
+    // Restore speed (was set to 0 for vending machine)
+    if (pedestrian.speed === 0) {
+      pedestrian.speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
+    }
+    
+    // Find path to target
+    const pathToTarget = this.pathfindingSystem.findPath(
+      pedestrian.x,
+      pedestrian.y,
+      targetX,
+      targetY,
+      'pedestrian'
+    );
+    
+    if (pathToTarget.length > 0 || (pedestrian.x === targetX && pedestrian.y === targetY)) {
+      pedestrian.path = pathToTarget;
+      pedestrian.currentPathIndex = 0;
+      pedestrian.state = nextState;
+    } else {
+      // Can't find path - handle based on phase
+      if (shouldGoToVehicle) {
+        console.warn('Pedestrian cannot find path to vehicle after need fulfillment');
+        // Teleport to vehicle as fallback
+        pedestrian.x = pedestrian.vehicleX;
+        pedestrian.y = pedestrian.vehicleY;
+        const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
+        pedestrian.screenX = vehicleScreenPos.x;
+        pedestrian.screenY = vehicleScreenPos.y;
+        pedestrian.state = 'at_vehicle';
+      } else {
+        console.warn('Pedestrian cannot find path to destination after need fulfillment');
+        pedestrian.state = 'despawned';
+        pedestrian.respawnTimer = pedestrian.respawnDuration;
+      }
+    }
+  }
+
+  /**
    * Handle pedestrian arriving at their destination
    */
   private handlePedestrianArrival(
     pedestrian: PedestrianEntity,
-    targetType: 'destination' | 'vehicle'
+    targetType: 'destination' | 'vehicle' | 'need'
   ): void {
     if (targetType === 'destination') {
       if (pedestrian.destinationX !== undefined && pedestrian.destinationY !== undefined &&
@@ -258,10 +506,44 @@ export class PedestrianSystem {
         pedestrian.state = 'despawned';
         pedestrian.respawnTimer = pedestrian.respawnDuration;
       }
-    } else {
+    } else if (targetType === 'vehicle') {
       if (pedestrian.x === pedestrian.vehicleX && pedestrian.y === pedestrian.vehicleY) {
         // Reached vehicle - mark as at_vehicle so vehicle can leave
         pedestrian.state = 'at_vehicle';
+      }
+    } else if (targetType === 'need') {
+      // Check if reached need target
+      if (pedestrian.needTargetX !== undefined && pedestrian.needTargetY !== undefined &&
+          pedestrian.x === pedestrian.needTargetX && pedestrian.y === pedestrian.needTargetY) {
+        // Find the ploppable to verify need fulfillment
+        if (pedestrian.needTargetPloppableId) {
+          // Find ploppable in grid
+          let targetPloppable: Ploppable | null = null;
+          for (let x = 0; x < this.gridWidth; x++) {
+            for (let y = 0; y < this.gridHeight; y++) {
+              const cellData = this.gridManager.getCellData(x, y);
+              if (cellData && cellData.ploppable && cellData.ploppable.id === pedestrian.needTargetPloppableId) {
+                targetPloppable = cellData.ploppable;
+                break;
+              }
+            }
+            if (targetPloppable) break;
+          }
+          
+          if (targetPloppable && NeedsSystem.hasReachedNeedTarget(pedestrian.x, pedestrian.y, targetPloppable)) {
+            // Reached need target - fulfill need
+            if (NeedsSystem.needRequiresTimer(pedestrian.currentNeed!)) {
+              // Vending machine: stop movement and start timer (2 in-game minutes)
+              const timeSystem = TimeSystem.getInstance();
+              pedestrian.needFulfillmentStartTime = timeSystem.getTotalMinutes();
+              pedestrian.speed = 0; // Stop movement while waiting
+              pedestrian.state = 'fulfilling_need';
+            } else {
+              // Trash can - instant fulfillment
+              this.completeNeedFulfillment(pedestrian);
+            }
+          }
+        }
       }
     }
   }
@@ -316,10 +598,9 @@ export class PedestrianSystem {
   }
 
   /**
-   * Update grid size (e.g., when loading a new map)
+   * Set need generation probability (0-1)
    */
-  setGridSize(size: number): void {
-    this.gridSize = size;
-    this.pathfindingSystem.setGridSize(size);
+  setNeedGenerationProbability(probability: number): void {
+    this.needGenerationProbability = Math.max(0, Math.min(1, probability));
   }
 }

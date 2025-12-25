@@ -146,7 +146,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       cellY: number,
       edge: number,
       entityType: 'vehicle' | 'pedestrian',
-      checkParkingSpots: boolean,
+      isEntryEdge: boolean,
       movementDirection: 'north' | 'south' | 'east' | 'west'
     ): boolean => {
       return PathfindingUtilities.isEdgeBlockedForEntity(
@@ -155,8 +155,28 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         edge,
         entityType,
         this.gridManager,
-        checkParkingSpots,
+        isEntryEdge,
         movementDirection
+      );
+    };
+    
+    // Create move cost callback for pathfinding (penalizes lane line crossings)
+    const getMoveCost = (
+      fromX: number,
+      fromY: number,
+      toX: number,
+      toY: number,
+      direction: 'north' | 'south' | 'east' | 'west',
+      entityType: 'vehicle' | 'pedestrian'
+    ): number => {
+      return PathfindingUtilities.getLaneLineCrossingCost(
+        fromX,
+        fromY,
+        toX,
+        toY,
+        direction,
+        entityType,
+        this.gridManager
       );
     };
     
@@ -166,7 +186,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       this.gridHeight,
       (x: number, y: number) => this.gridManager.getCellData(x, y),
       () => this.getPedestrianDestinations(),
-      isEdgeBlocked
+      isEdgeBlocked,
+      this.gridManager,
+      0 // Default need generation probability (can be overridden by scenes)
     );
     
     // Initialize vehicle system (with pedestrian system reference)
@@ -176,6 +198,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       (x: number, y: number) => this.gridManager.getCellData(x, y),
       () => this.getAllParkingSpots(),
       isEdgeBlocked,
+      getMoveCost,
       this.pedestrianSystem
     );
   }
@@ -247,7 +270,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     this.clearLabels();
     this.renderGrid();
     this.renderLines();
-    this.renderRails();
+    // Rail visualization removed - pathing logic remains intact
+    // this.renderRails();
     this.renderPermanentLabels();
     this.renderSpawners();
     this.renderPloppables();

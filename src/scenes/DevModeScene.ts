@@ -44,6 +44,9 @@ export class DevModeScene extends BaseGameplayScene {
     // Initialize game systems for dev mode (starting budget of $10,000)
     GameSystems.resetForChallenge(10000);
     
+    // Set need generation probability to 0% for dev mode
+    this.pedestrianSystem.setNeedGenerationProbability(0);
+    
     // Set up keyboard controls
     this.setupKeyboardControls();
     

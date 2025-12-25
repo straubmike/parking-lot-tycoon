@@ -89,9 +89,16 @@ export interface Pedestrian {
   vehicleY: number; // Grid Y of vehicle (parking spot)
   destinationX?: number; // Grid X of destination (spawner/de-respawner)
   destinationY?: number; // Grid Y of destination (spawner/de-respawner)
-  state: 'spawning' | 'going_to_destination' | 'at_destination' | 'despawned' | 'respawning' | 'returning_to_vehicle' | 'at_vehicle';
+  state: 'spawning' | 'going_to_destination' | 'at_destination' | 'despawned' | 'respawning' | 'returning_to_vehicle' | 'at_vehicle' | 'going_to_need' | 'fulfilling_need';
   respawnTimer?: number; // Time remaining before respawn (milliseconds)
   respawnDuration?: number; // Total time to wait before respawn (milliseconds)
+  // Need system fields
+  currentNeed?: 'trash' | 'thirst' | null; // Current need the pedestrian has
+  needTargetPloppableId?: string; // ID of the ploppable that fulfills this need
+  needTargetX?: number; // Grid X where they need to go to fulfill the need
+  needTargetY?: number; // Grid Y where they need to go to fulfill the need
+  needFulfillmentTimer?: number; // Timer for vending machine (in game minutes)
+  needFulfillmentStartTime?: number; // Game time (minutes) when they arrived at the vending machine
   // Personal variables for later use (lot rating, satisfaction, etc.)
   satisfaction?: number; // Satisfaction rating (0-100)
   rating?: number; // Personal rating contribution

@@ -14,9 +14,16 @@ export class PedestrianEntity implements Pedestrian {
   vehicleY: number;
   destinationX?: number;
   destinationY?: number;
-  state: 'spawning' | 'going_to_destination' | 'at_destination' | 'despawned' | 'respawning' | 'returning_to_vehicle' | 'at_vehicle';
+  state: 'spawning' | 'going_to_destination' | 'at_destination' | 'despawned' | 'respawning' | 'returning_to_vehicle' | 'at_vehicle' | 'going_to_need' | 'fulfilling_need';
   respawnTimer?: number;
   respawnDuration?: number;
+  // Need system fields
+  currentNeed?: 'trash' | 'thirst' | null;
+  needTargetPloppableId?: string;
+  needTargetX?: number;
+  needTargetY?: number;
+  needFulfillmentTimer?: number;
+  needFulfillmentStartTime?: number;
   satisfaction?: number;
   rating?: number;
 

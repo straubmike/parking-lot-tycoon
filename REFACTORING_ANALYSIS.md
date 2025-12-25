@@ -95,7 +95,7 @@ DevModeScene currently contains ~2450 lines of code that implements a complete p
 **Why**: Pathfinding logic is shared between VehicleSystem, PedestrianSystem, and scene validation. This is pure utility logic.
 
 **Key methods:**
-- `isEdgeBlockedForEntity(cellX, cellY, edge, entityType, gridManager, checkParkingSpots, movementDirection)` → `boolean`
+- `isEdgeBlockedForEntity(cellX, cellY, edge, entityType, gridManager, isEntryEdge, movementDirection)` → `boolean`
 - `isEdgeImpassable(cellX, cellY, edge, gridManager)` → `boolean`
 - `isParkingSpotEdgeBlocked(cellX, cellY, edge, gridManager)` → `boolean`
 - `doesRailSegmentCrossImpassable(startX, startY, endX, endY, gridManager)` → `boolean`

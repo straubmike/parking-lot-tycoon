@@ -108,7 +108,7 @@ export class PathfindingUtilities {
    * - Vehicles: Blocked by curbs, fences, lane lines (directional), and parking spot borders
    * - Pedestrians: Blocked only by fences
    * 
-   * @param checkParkingSpots - If false, skip parking spot border checks (used for corridor edges)
+   * @param isEntryEdge - If true, this is an entry edge (check parking spots, lane lines, curbs). If false, this is a corridor edge (only check fences).
    * @param movementDirection - The direction of movement (for lane line "drive on the right" logic)
    */
   static isEdgeBlockedForEntity(
@@ -117,17 +117,17 @@ export class PathfindingUtilities {
     edge: number,
     entityType: 'vehicle' | 'pedestrian',
     gridManager: GridManager,
-    checkParkingSpots: boolean = true,
+    isEntryEdge: boolean = true,
     movementDirection: 'north' | 'south' | 'east' | 'west' = 'north'
   ): boolean {
     // Check border segments (curbs, fences, and lane lines)
     // Key insight: 
     // - Fences block everything everywhere (use shared edge lookup)
-    // - Curbs/lane lines only block on ENTRY edges (checkParkingSpots=true), not corridor walls
+    // - Curbs/lane lines only block on ENTRY edges (isEntryEdge=true), not corridor walls
     // - For N/S corridor edges, use current cell key only to avoid false positives from neighbors
     const isNorthSouthMovement = movementDirection === 'north' || movementDirection === 'south';
     const isEastWestMovement = movementDirection === 'east' || movementDirection === 'west';
-    const isCorridorEdge = !checkParkingSpots;
+    const isCorridorEdge = !isEntryEdge;
     
     // For fences: always use shared edge lookup (fences block everything)
     const existingKey = gridManager.findExistingBorderSegmentKey(cellX, cellY, edge);
@@ -163,25 +163,35 @@ export class PathfindingUtilities {
     }
     
     // Lane line (yellow) - block parallel movement on ENTRY edges only
-    if (curbLaneColor === 0xffff00 && entityType === 'vehicle' && checkParkingSpots) {
+    // Lane lines enforce "drive on the right" by blocking parallel movement
+    // 
+    // CRITICAL: The edge orientation is OPPOSITE to the lane line's actual direction:
+    // - A lane line on a VERTICAL edge (top/bottom, edges 0/2) actually spans HORIZONTALLY (E/W)
+    //   So it should block E/W movement (parallel) and allow N/S movement (perpendicular)
+    // - A lane line on a HORIZONTAL edge (left/right, edges 1/3) actually spans VERTICALLY (N/S)
+    //   So it should block N/S movement (parallel) and allow E/W movement (perpendicular)
+    if (curbLaneColor === 0xffff00 && entityType === 'vehicle' && isEntryEdge) {
       const isVerticalEdge = edge === 0 || edge === 2;
       const isHorizontalEdge = edge === 1 || edge === 3;
       
-      // Block parallel movement (movement that directly crosses the edge)
-      // Allow perpendicular movement (turning across the lane line)
-      if (isVerticalEdge && isNorthSouthMovement) {
-        return true; // Lane line on top/bottom edge blocks N/S movement
+      // Block parallel movement (movement that follows the lane line's actual direction)
+      // Allow perpendicular movement (crossing the lane line)
+      // 
+      // If lane line is on vertical edge (top/bottom), it spans E/W, so block E/W movement (parallel)
+      if (isVerticalEdge && isEastWestMovement) {
+        return true; // Lane line on top/bottom edge spans E/W, blocks E/W movement (parallel)
       }
-      if (isHorizontalEdge && isEastWestMovement) {
-        return true; // Lane line on right/left edge blocks E/W movement
+      // If lane line is on horizontal edge (left/right), it spans N/S, so block N/S movement (parallel)
+      if (isHorizontalEdge && isNorthSouthMovement) {
+        return true; // Lane line on left/right edge spans N/S, blocks N/S movement (parallel)
       }
     }
     
-    // Check parking spot borders (only block vehicles, and only if checkParkingSpots is true)
+    // Check parking spot borders (only block vehicles, and only if isEntryEdge is true)
     // Parking spot borders only block direct entry into the spot, not corridor movement
     // NOTE: We only check the current cell, not neighbors, because parking spot borders
     // should only block entry into the parking spot cell itself, not movement past adjacent cells
-    if (entityType === 'vehicle' && checkParkingSpots) {
+    if (entityType === 'vehicle' && isEntryEdge) {
       if (this.isParkingSpotEdgeBlocked(cellX, cellY, edge, gridManager)) {
         return true;
       }
@@ -192,6 +202,72 @@ export class PathfindingUtilities {
     }
     
     return false;
+  }
+
+  /**
+   * Check if a move crosses a lane line perpendicularly (for cost penalty)
+   * Returns the cost penalty for crossing a lane line (higher = pathfinding will avoid it)
+   * @param fromX - Starting cell X
+   * @param fromY - Starting cell Y
+   * @param toX - Target cell X
+   * @param toY - Target cell Y
+   * @param direction - Direction of movement
+   * @param entityType - Type of entity
+   * @param gridManager - Grid manager instance
+   * @returns Cost penalty (0 if no lane line crossed, >0 if lane line crossed)
+   */
+  static getLaneLineCrossingCost(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    direction: 'north' | 'south' | 'east' | 'west',
+    entityType: 'vehicle' | 'pedestrian',
+    gridManager: GridManager
+  ): number {
+    // Only vehicles are affected by lane lines
+    if (entityType !== 'vehicle') {
+      return 0;
+    }
+
+    // Get edges that would be crossed in this move
+    const isNorthSouthMovement = direction === 'north' || direction === 'south';
+    const isEastWestMovement = direction === 'east' || direction === 'west';
+    
+    // For entry edges, check if we're crossing a lane line perpendicularly
+    // We need to check the entry edge of the target cell
+    let entryEdge: number;
+    if (direction === 'north') {
+      entryEdge = 2; // Bottom edge of target cell
+    } else if (direction === 'south') {
+      entryEdge = 0; // Top edge of target cell
+    } else if (direction === 'east') {
+      entryEdge = 3; // Left edge of target cell
+    } else { // west
+      entryEdge = 1; // Right edge of target cell
+    }
+
+    // Check if there's a lane line on the entry edge
+    const existingKey = gridManager.findExistingBorderSegmentKey(toX, toY, entryEdge);
+    if (existingKey) {
+      const color = gridManager.getBorderSegment(existingKey);
+      if (color === 0xffff00) {
+        // Lane line detected - check if this is a perpendicular crossing
+        const isVerticalEdge = entryEdge === 0 || entryEdge === 2;
+        const isHorizontalEdge = entryEdge === 1 || entryEdge === 3;
+        
+        // Perpendicular crossing: vertical edge with N/S movement OR horizontal edge with E/W movement
+        const isPerpendicularCrossing = 
+          (isVerticalEdge && isNorthSouthMovement) ||
+          (isHorizontalEdge && isEastWestMovement);
+        
+        if (isPerpendicularCrossing) {
+          return 10; // High penalty to prefer paths that don't cross lane lines
+        }
+      }
+    }
+
+    return 0;
   }
 
   /**
