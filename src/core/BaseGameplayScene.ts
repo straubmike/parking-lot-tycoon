@@ -9,7 +9,7 @@ import { PathfindingUtilities } from '@/utils/PathfindingUtilities';
 import { VehicleSystem } from '@/systems/VehicleSystem';
 import { PedestrianSystem } from '@/systems/PedestrianSystem';
 import { GameSystems } from './GameSystems';
-import { Ploppable, CellData } from '@/types';
+import { Ploppable } from '@/types';
 
 /**
  * BaseGameplayScene - Base class for gameplay scenes (dev mode, challenges, etc.)
@@ -259,7 +259,10 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     }
     if (ratingEl) {
       const current = GameSystems.rating.getCurrentRating();
-      ratingEl.textContent = current.toFixed(0);
+      const currentDay = GameSystems.time.getCurrentDay();
+      const previous = currentDay === 0 ? null : GameSystems.rating.getPreviousDayRating();
+      const previousDisplay = previous === null ? 'n/a' : previous.toFixed(0);
+      ratingEl.textContent = `${current.toFixed(0)} : ${previousDisplay}`;
     }
   }
 
