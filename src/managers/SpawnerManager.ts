@@ -106,20 +106,9 @@ export class SpawnerManager {
     const pair = vehicleSystem.findPairByCell(spawnerX, spawnerY);
     if (!pair) return;
     
-    // Remove from grid
-    const spawnerCellData = gridManager.getCellData(pair.spawnerX, pair.spawnerY);
-    if (spawnerCellData) {
-      const newSpawnerData = { ...spawnerCellData };
-      delete newSpawnerData.vehicleSpawner;
-      gridManager.setCellData(pair.spawnerX, pair.spawnerY, newSpawnerData);
-    }
-    
-    const despawnerCellData = gridManager.getCellData(pair.despawnerX, pair.despawnerY);
-    if (despawnerCellData) {
-      const newDespawnerData = { ...despawnerCellData };
-      delete newDespawnerData.vehicleDespawner;
-      gridManager.setCellData(pair.despawnerX, pair.despawnerY, newDespawnerData);
-    }
+    // Remove from grid - use undefined to properly delete properties
+    gridManager.setCellData(pair.spawnerX, pair.spawnerY, { vehicleSpawner: undefined as any });
+    gridManager.setCellData(pair.despawnerX, pair.despawnerY, { vehicleDespawner: undefined as any });
     
     // Remove from vehicle system
     vehicleSystem.removeSpawnerDespawnerPair(spawnerX, spawnerY);

@@ -396,6 +396,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    * Render ploppables
    */
   protected renderPloppables(): void {
+    // Clear parking spot graphics before redrawing
+    this.parkingSpotGraphics.clear();
+    
     // Draw parking spot lines
     for (let x = 0; x < this.gridWidth; x++) {
       for (let y = 0; y < this.gridHeight; y++) {

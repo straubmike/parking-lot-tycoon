@@ -123,11 +123,21 @@ export class GridManager {
   /**
    * Set cell data for a given grid coordinate
    * Merges with existing data if present
+   * Properties set to undefined are deleted from the cell data
    */
   setCellData(gridX: number, gridY: number, data: CellData): void {
     const cellKey = this.getCellKey(gridX, gridY);
     const existingData = this.cellData.get(cellKey) || {};
-    this.cellData.set(cellKey, { ...existingData, ...data });
+    const merged = { ...existingData, ...data };
+    
+    // Delete properties that are explicitly set to undefined
+    Object.keys(merged).forEach(key => {
+      if ((merged as any)[key] === undefined) {
+        delete (merged as any)[key];
+      }
+    });
+    
+    this.cellData.set(cellKey, merged);
   }
 
   /**

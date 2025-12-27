@@ -183,9 +183,8 @@ export class PloppableManager {
     }
     
     const ploppable = cellData.ploppable;
-    const newCellData: CellData = { ...cellData };
-    delete newCellData.ploppable;
-    gridManager.setCellData(gridX, gridY, newCellData);
+    // Explicitly set ploppable to undefined so setCellData will delete it
+    gridManager.setCellData(gridX, gridY, { ploppable: undefined as any });
     
     return ploppable;
   }

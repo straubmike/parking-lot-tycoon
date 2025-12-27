@@ -496,7 +496,8 @@ export class DevModeScene extends BaseGameplayScene {
         this.isPainting = true;
         this.lastPaintedCell = null; // Reset for new paint stroke
         this.lastPaintedEdgeKey = null; // Reset for new paint stroke
-        if (this.isLineMode) {
+        // Demolish mode always uses cell-based logic, not edge-based
+        if (this.isLineMode && !this.isDemolishMode) {
           // In line mode, we need the hovered edge
           if (this.hoveredEdge) {
             this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
@@ -534,7 +535,8 @@ export class DevModeScene extends BaseGameplayScene {
         );
       } else if (this.isPainting && pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode || this.isDemolishMode)) {
         // Paint while dragging
-        if (this.isLineMode) {
+        // Demolish mode always uses cell-based logic, not edge-based
+        if (this.isLineMode && !this.isDemolishMode) {
           // In line mode, paint based on hovered edge
           if (this.hoveredEdge) {
             this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
