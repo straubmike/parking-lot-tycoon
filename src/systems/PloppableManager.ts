@@ -139,30 +139,118 @@ export class PloppableManager {
   }
 
   /**
+   * Get the size of a ploppable (number of tiles it occupies)
+   */
+  static getPloppableSize(ploppableType: string): number {
+    if (ploppableType === 'Dumpster') {
+      return 2;
+    }
+    return 1; // Default to single tile
+  }
+
+  /**
+   * Get the second cell coordinates for a 2-tile ploppable
+   * Returns null if the ploppable is not 2-tile or orientation is invalid
+   */
+  static getSecondCellForTwoTile(
+    gridX: number,
+    gridY: number,
+    orientation: number,
+    gridWidth: number,
+    gridHeight: number
+  ): { x: number; y: number } | null {
+    let secondX: number, secondY: number;
+    
+    // For 2-tile ploppables, the second cell is adjacent based on orientation
+    // Orientation 0 (north): second cell is south (y+1) - vertical, front face at north
+    // Orientation 1 (east): second cell is west (x-1) - horizontal, front face at east
+    // Orientation 2 (south): second cell is north (y-1) - vertical, front face at south
+    // Orientation 3 (west): second cell is east (x+1) - horizontal, front face at west
+    switch (orientation) {
+      case 0: // North - vertical, front face at top
+        secondX = gridX;
+        secondY = gridY + 1;
+        break;
+      case 1: // East - horizontal, front face at right
+        secondX = gridX - 1;
+        secondY = gridY;
+        break;
+      case 2: // South - vertical, front face at bottom
+        secondX = gridX;
+        secondY = gridY - 1;
+        break;
+      case 3: // West - horizontal, front face at left
+        secondX = gridX + 1;
+        secondY = gridY;
+        break;
+      default:
+        return null;
+    }
+    
+    // Check if second cell is within bounds
+    if (secondX < 0 || secondX >= gridWidth || secondY < 0 || secondY >= gridHeight) {
+      return null;
+    }
+    
+    return { x: secondX, y: secondY };
+  }
+
+  /**
    * Check if a ploppable can be placed at the given cell
+   * For 2-tile ploppables, checks both cells
    */
   static canPlacePloppable(
     gridX: number,
     gridY: number,
-    gridManager: GridManager
+    gridManager: GridManager,
+    ploppableType?: string,
+    orientation?: number,
+    gridWidth?: number,
+    gridHeight?: number
   ): boolean {
     const cellData = gridManager.getCellData(gridX, gridY);
     // Cell is occupied if it has a ploppable, spawner, or despawner
-    return !(cellData?.ploppable || cellData?.vehicleSpawner || cellData?.vehicleDespawner);
+    if (cellData?.ploppable || cellData?.vehicleSpawner || cellData?.vehicleDespawner) {
+      return false;
+    }
+    
+    // For 2-tile ploppables, also check the second cell
+    if (ploppableType && this.getPloppableSize(ploppableType) === 2) {
+      const ori = orientation ?? 0;
+      const width = gridWidth ?? 0;
+      const height = gridHeight ?? 0;
+      const secondCell = this.getSecondCellForTwoTile(gridX, gridY, ori, width, height);
+      if (!secondCell) {
+        return false; // Second cell is out of bounds
+      }
+      
+      const secondCellData = gridManager.getCellData(secondCell.x, secondCell.y);
+      if (secondCellData?.ploppable || secondCellData?.vehicleSpawner || secondCellData?.vehicleDespawner) {
+        return false; // Second cell is occupied
+      }
+    }
+    
+    return true;
   }
 
   /**
    * Place a ploppable at the given cell
    * Returns true if placement was successful
    * Automatically sets the passable property based on ploppable type if not already set
+   * For 2-tile ploppables, places on both cells
    */
   static placePloppable(
     gridX: number,
     gridY: number,
     ploppable: Ploppable,
-    gridManager: GridManager
+    gridManager: GridManager,
+    gridWidth?: number,
+    gridHeight?: number
   ): boolean {
-    if (!this.canPlacePloppable(gridX, gridY, gridManager)) {
+    const width = gridWidth ?? gridManager.getGridWidth();
+    const height = gridHeight ?? gridManager.getGridHeight();
+    
+    if (!this.canPlacePloppable(gridX, gridY, gridManager, ploppable.type, ploppable.orientation, width, height)) {
       return false;
     }
     
@@ -171,18 +259,34 @@ export class PloppableManager {
       ploppable.passable = PassabilitySystem.getPassableValueForType(ploppable.type);
     }
     
+    // Place on primary cell
     gridManager.setCellData(gridX, gridY, { ploppable });
+    
+    // For 2-tile ploppables, also place on the second cell
+    const size = this.getPloppableSize(ploppable.type);
+    if (size === 2) {
+      const orientation = ploppable.orientation ?? 0;
+      const secondCell = this.getSecondCellForTwoTile(gridX, gridY, orientation, width, height);
+      if (secondCell) {
+        // Store the same ploppable reference in the second cell
+        gridManager.setCellData(secondCell.x, secondCell.y, { ploppable });
+      }
+    }
+    
     return true;
   }
 
   /**
    * Remove a ploppable from the given cell
    * Returns the removed ploppable if one existed
+   * For 2-tile ploppables, removes from both cells
    */
   static removePloppable(
     gridX: number,
     gridY: number,
-    gridManager: GridManager
+    gridManager: GridManager,
+    gridWidth?: number,
+    gridHeight?: number
   ): Ploppable | null {
     const cellData = gridManager.getCellData(gridX, gridY);
     if (!cellData?.ploppable) {
@@ -190,7 +294,36 @@ export class PloppableManager {
     }
     
     const ploppable = cellData.ploppable;
-    // Explicitly set ploppable to undefined so setCellData will delete it
+    const width = gridWidth ?? gridManager.getGridWidth();
+    const height = gridHeight ?? gridManager.getGridHeight();
+    
+    // For 2-tile ploppables, also remove from the second cell
+    const size = this.getPloppableSize(ploppable.type);
+    if (size === 2) {
+      const orientation = ploppable.orientation ?? 0;
+      const secondCell = this.getSecondCellForTwoTile(gridX, gridY, orientation, width, height);
+      if (secondCell) {
+        // Check if this is the primary cell (ploppable.x, ploppable.y matches this cell)
+        // If not, we need to find the primary cell
+        let primaryX = gridX;
+        let primaryY = gridY;
+        
+        // If this is the second cell, calculate the primary cell
+        if (gridX !== ploppable.x || gridY !== ploppable.y) {
+          primaryX = ploppable.x;
+          primaryY = ploppable.y;
+          // Remove from this (second) cell first
+          gridManager.setCellData(gridX, gridY, { ploppable: undefined as any });
+          // Then remove from primary cell (which will also remove from its second cell)
+          return this.removePloppable(primaryX, primaryY, gridManager, width, height);
+        }
+        
+        // This is the primary cell, remove from second cell
+        gridManager.setCellData(secondCell.x, secondCell.y, { ploppable: undefined as any });
+      }
+    }
+    
+    // Remove from primary cell
     gridManager.setCellData(gridX, gridY, { ploppable: undefined as any });
     
     return ploppable;
@@ -199,6 +332,7 @@ export class PloppableManager {
   /**
    * Draw a ploppable and return the created label (if any) for management
    * Returns null for ploppables that don't create labels (parking spots, pedestrian spawners)
+   * For 2-tile ploppables, only renders from the primary cell to avoid duplicates
    */
   static drawPloppable(
     gridX: number,
@@ -218,9 +352,11 @@ export class PloppableManager {
       return null;
     }
     
-    // Convert grid coords to screen coords (isometric center)
-    const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
-    const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+    // For 2-tile ploppables, only render from the primary cell (where ploppable.x, ploppable.y matches)
+    const size = this.getPloppableSize(ploppable.type);
+    if (size === 2 && (gridX !== ploppable.x || gridY !== ploppable.y)) {
+      return null; // This is the second cell, skip rendering (will be rendered from primary cell)
+    }
     
     const orientation = ploppable.orientation || 0;
     const orientationType = ploppable.orientationType || 'B'; // Default to Type B
@@ -229,9 +365,12 @@ export class PloppableManager {
     let emoji = '❓';
     if (ploppable.type === 'Trash Can') emoji = '🗑️';
     else if (ploppable.type === 'Vending Machine') emoji = '🥤';
+    else if (ploppable.type === 'Dumpster') emoji = '🗄️';
     
     if (orientationType === 'A') {
       // Type A: Position along rail extremities, but inside the cell
+      const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
+      const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
       const position = this.getTypeAPosition(centerX, centerY, orientation);
       
       // Create emoji label - origin at mid-bottom for Type A (trash can)
@@ -243,25 +382,87 @@ export class PloppableManager {
       return label;
     } else {
       // Type B: Central position with rotation indicator (arrow showing facing direction)
-      // Create main emoji label at center
-      const label = scene.add.text(centerX, centerY, emoji, {
-        fontSize: '24px',
-      });
-      label.setOrigin(0.5, 0.5);
-      label.setDepth(3);
-      
-      // Draw orientation arrow pointing in the facing direction
-      this.drawOrientationArrow(
-        graphics,
-        centerX,
-        centerY,
-        orientation,
-        20, // arrow length
-        0x00ff00, // green color
-        1.0 // full opacity
-      );
-      
-      return label;
+      if (size === 2) {
+        // For 2-tile ploppables, calculate center between the two cells
+        // Get the second cell coordinates
+        const primaryCell = { x: ploppable.x, y: ploppable.y };
+        // Calculate second cell based on orientation
+        // Orientation 0: (x, y+1), Orientation 1: (x-1, y), Orientation 2: (x, y-1), Orientation 3: (x+1, y)
+        let secondX: number, secondY: number;
+        switch (orientation) {
+          case 0:
+            secondX = primaryCell.x;
+            secondY = primaryCell.y + 1;
+            break;
+          case 1:
+            secondX = primaryCell.x - 1;
+            secondY = primaryCell.y;
+            break;
+          case 2:
+            secondX = primaryCell.x;
+            secondY = primaryCell.y - 1;
+            break;
+          case 3:
+            secondX = primaryCell.x + 1;
+            secondY = primaryCell.y;
+            break;
+          default:
+            secondX = primaryCell.x;
+            secondY = primaryCell.y;
+        }
+        
+        // Calculate center between the two cells
+        const center1X = (primaryCell.x - primaryCell.y) * (TILE_WIDTH / 2) + gridOffsetX;
+        const center1Y = (primaryCell.x + primaryCell.y) * (TILE_HEIGHT / 2) + gridOffsetY;
+        const center2X = (secondX - secondY) * (TILE_WIDTH / 2) + gridOffsetX;
+        const center2Y = (secondX + secondY) * (TILE_HEIGHT / 2) + gridOffsetY;
+        const centerX = (center1X + center2X) / 2;
+        const centerY = (center1Y + center2Y) / 2;
+        
+        // Create emoji label at center between the two cells
+        const label = scene.add.text(centerX, centerY, emoji, {
+          fontSize: '24px',
+        });
+        label.setOrigin(0.5, 0.5);
+        label.setDepth(3);
+        
+        // Draw orientation arrow pointing in the facing direction (from center)
+        this.drawOrientationArrow(
+          graphics,
+          centerX,
+          centerY,
+          orientation,
+          20, // arrow length
+          0x00ff00, // green color
+          1.0 // full opacity
+        );
+        
+        return label;
+      } else {
+        // Single-tile Type B: Central position with rotation indicator
+        const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
+        const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+        
+        // Create main emoji label at center
+        const label = scene.add.text(centerX, centerY, emoji, {
+          fontSize: '24px',
+        });
+        label.setOrigin(0.5, 0.5);
+        label.setDepth(3);
+        
+        // Draw orientation arrow pointing in the facing direction
+        this.drawOrientationArrow(
+          graphics,
+          centerX,
+          centerY,
+          orientation,
+          20, // arrow length
+          0x00ff00, // green color
+          1.0 // full opacity
+        );
+        
+        return label;
+      }
     }
   }
 }

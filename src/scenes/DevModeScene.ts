@@ -44,8 +44,10 @@ export class DevModeScene extends BaseGameplayScene {
     // Initialize game systems for dev mode (starting budget of $10,000)
     GameSystems.resetForChallenge(10000);
     
-    // Set need generation probability to 0% for dev mode
-    this.pedestrianSystem.setNeedGenerationProbability(0);
+    // Set need generation probability to 100% for dev mode (testing dumpsters)
+    this.pedestrianSystem.setNeedGenerationProbability(1);
+    // Set need type distribution to 100% trash for testing dumpsters
+    this.pedestrianSystem.setNeedTypeDistribution({ trash: 1.0, thirst: 0.0 });
     
     // Set up keyboard controls
     this.setupKeyboardControls();
@@ -198,7 +200,7 @@ export class DevModeScene extends BaseGameplayScene {
       }
       
       // Check if cell already has a ploppable, spawner, or despawner
-      if (!PloppableManager.canPlacePloppable(gridX, gridY, this.gridManager)) {
+      if (!PloppableManager.canPlacePloppable(gridX, gridY, this.gridManager, this.selectedPloppableType || undefined, this.ploppableOrientation, this.gridWidth, this.gridHeight)) {
         return;
       }
       
@@ -221,7 +223,7 @@ export class DevModeScene extends BaseGameplayScene {
       };
       
       // Store in cell data using PloppableManager
-      PloppableManager.placePloppable(gridX, gridY, ploppable, this.gridManager);
+      PloppableManager.placePloppable(gridX, gridY, ploppable, this.gridManager, this.gridWidth, this.gridHeight);
       
       // If this is a pedestrian spawner, register it with the pedestrian system
       if (this.selectedPloppableType === 'Pedestrian Spawner') {
@@ -342,40 +344,95 @@ export class DevModeScene extends BaseGameplayScene {
           offsetPoints[endIdx].y
         );
       });
-    } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine') {
+    } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
       // Draw preview for oriented ploppables
-      const centerX = (offsetPoints[0].x + offsetPoints[2].x) / 2;
-      const centerY = (offsetPoints[0].y + offsetPoints[2].y) / 2;
-      
-      // Get orientation type from button data
+      // Get orientation type and size from button data
       const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
       const orientationType = button?.getAttribute('data-orientation-type') || 'B';
+      const sizeAttr = button?.getAttribute('data-size');
+      const size = sizeAttr ? parseInt(sizeAttr, 10) : 1;
       
-      // Draw preview text (semi-transparent)
-      // We'll just draw a highlight with orientation indicator
-      this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
-      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
-      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
-      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
-      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
-      
-      // Draw orientation indicator using the same calculation as actual placement
-      if (orientationType === 'A') {
-        // For Type A, show dot at the position
-        const indicatorPos = PloppableManager.getTypeAPosition(centerX, centerY, this.ploppableOrientation);
-        this.highlightGraphics.fillStyle(0x00ff00, 0.8);
-        this.highlightGraphics.fillCircle(indicatorPos.x, indicatorPos.y, 4);
+      if (size === 2) {
+        // 2-tile ploppable preview (dumpster)
+        // Calculate second cell based on orientation
+        const secondCell = PloppableManager.getSecondCellForTwoTile(gridX, gridY, this.ploppableOrientation, this.gridWidth, this.gridHeight);
+        
+        if (secondCell) {
+          // Draw highlight for primary cell
+          this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
+          this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+          this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+          this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+          this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+          
+          // Draw highlight for second cell
+          const secondPoints = getIsometricTilePoints(secondCell.x, secondCell.y);
+          const secondOffsetPoints = secondPoints.map(p => ({
+            x: p.x + this.gridOffsetX,
+            y: p.y + this.gridOffsetY
+          }));
+          this.highlightGraphics.lineBetween(secondOffsetPoints[0].x, secondOffsetPoints[0].y, secondOffsetPoints[1].x, secondOffsetPoints[1].y);
+          this.highlightGraphics.lineBetween(secondOffsetPoints[1].x, secondOffsetPoints[1].y, secondOffsetPoints[2].x, secondOffsetPoints[2].y);
+          this.highlightGraphics.lineBetween(secondOffsetPoints[2].x, secondOffsetPoints[2].y, secondOffsetPoints[3].x, secondOffsetPoints[3].y);
+          this.highlightGraphics.lineBetween(secondOffsetPoints[3].x, secondOffsetPoints[3].y, secondOffsetPoints[0].x, secondOffsetPoints[0].y);
+          
+          // Calculate center between the two cells for arrow
+          const center1X = (offsetPoints[0].x + offsetPoints[2].x) / 2;
+          const center1Y = (offsetPoints[0].y + offsetPoints[2].y) / 2;
+          const center2X = (secondOffsetPoints[0].x + secondOffsetPoints[2].x) / 2;
+          const center2Y = (secondOffsetPoints[0].y + secondOffsetPoints[2].y) / 2;
+          const centerX = (center1X + center2X) / 2;
+          const centerY = (center1Y + center2Y) / 2;
+          
+          // Draw orientation arrow pointing in the facing direction
+          PloppableManager.drawOrientationArrow(
+            this.highlightGraphics,
+            centerX,
+            centerY,
+            this.ploppableOrientation,
+            20, // arrow length
+            0x00ff00, // green color
+            0.8 // semi-transparent for preview
+          );
+        } else {
+          // Second cell is out of bounds, just draw primary cell in red
+          this.highlightGraphics.lineStyle(1.5, 0xff0000, 0.6);
+          this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+          this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+          this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+          this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+        }
       } else {
-        // For Type B, show arrow pointing in the facing direction
-        PloppableManager.drawOrientationArrow(
-          this.highlightGraphics,
-          centerX,
-          centerY,
-          this.ploppableOrientation,
-          20, // arrow length
-          0x00ff00, // green color
-          0.8 // semi-transparent for preview
-        );
+        // Single-tile ploppable preview
+        const centerX = (offsetPoints[0].x + offsetPoints[2].x) / 2;
+        const centerY = (offsetPoints[0].y + offsetPoints[2].y) / 2;
+        
+        // Draw preview text (semi-transparent)
+        // We'll just draw a highlight with orientation indicator
+        this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
+        this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+        this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+        this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+        this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+        
+        // Draw orientation indicator using the same calculation as actual placement
+        if (orientationType === 'A') {
+          // For Type A, show dot at the position
+          const indicatorPos = PloppableManager.getTypeAPosition(centerX, centerY, this.ploppableOrientation);
+          this.highlightGraphics.fillStyle(0x00ff00, 0.8);
+          this.highlightGraphics.fillCircle(indicatorPos.x, indicatorPos.y, 4);
+        } else {
+          // For Type B, show arrow pointing in the facing direction
+          PloppableManager.drawOrientationArrow(
+            this.highlightGraphics,
+            centerX,
+            centerY,
+            this.ploppableOrientation,
+            20, // arrow length
+            0x00ff00, // green color
+            0.8 // semi-transparent for preview
+          );
+        }
       }
     } else if (this.isLineMode && edge !== undefined) {
       // Draw blue line on the specific edge
@@ -745,7 +802,8 @@ export class DevModeScene extends BaseGameplayScene {
           }
           if (this.selectedPloppableType === 'Parking Spot' || 
               this.selectedPloppableType === 'Trash Can' || 
-              this.selectedPloppableType === 'Vending Machine') {
+              this.selectedPloppableType === 'Vending Machine' ||
+              this.selectedPloppableType === 'Dumpster') {
             description += '\n\nUse Q and E keys to rotate orientation.';
           }
         }
@@ -782,7 +840,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
         // Rotate counter-clockwise (Q): 0 -> 3 -> 2 -> 1 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
         // Update highlight if hovering over a cell
@@ -803,7 +861,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
         // Rotate clockwise (E): 0 -> 1 -> 2 -> 3 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         // Update highlight if hovering over a cell
@@ -1103,7 +1161,7 @@ export class DevModeScene extends BaseGameplayScene {
       }
       
       // Remove ploppable using PloppableManager
-      PloppableManager.removePloppable(gridX, gridY, this.gridManager);
+      PloppableManager.removePloppable(gridX, gridY, this.gridManager, this.gridWidth, this.gridHeight);
       needsRedraw = true;
     }
     

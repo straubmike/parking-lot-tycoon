@@ -17,6 +17,7 @@ export class PassabilitySystem {
     'Parking Spot': true, // Parking spots are passable (vehicles park in them)
     'Trash Can': true, // Trash cans are passable (pedestrians can walk past them)
     'Vending Machine': false, // Vending machines are impassable (block movement)
+    'Dumpster': false, // Dumpsters are impassable (block movement)
     'entrance': true, // Entrances are passable
     'exit': true, // Exits are passable
     'Pedestrian Spawner': true, // Spawners are passable

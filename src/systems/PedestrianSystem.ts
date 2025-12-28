@@ -19,6 +19,7 @@ export class PedestrianSystem {
   private pathfindingSystem: PathfindingSystem;
   private gridManager: GridManager;
   private needGenerationProbability: number; // Probability (0-1) that a pedestrian will have a need
+  private needTypeDistribution: Record<'trash' | 'thirst', number>; // Distribution weights for each need type (must sum to 1.0)
 
   constructor(
     gridWidth: number,
@@ -34,6 +35,9 @@ export class PedestrianSystem {
     this.getDestinations = getDestinations;
     this.gridManager = gridManager;
     this.needGenerationProbability = needGenerationProbability;
+    
+    // Initialize need type distribution (default: 50% trash, 50% thirst)
+    this.needTypeDistribution = { trash: 0.5, thirst: 0.5 };
     
     // Initialize pathfinding system
     this.pathfindingSystem = new PathfindingSystem(
@@ -61,17 +65,28 @@ export class PedestrianSystem {
   }
 
   /**
-   * Generate a random need for a pedestrian based on probability
+   * Generate a random need for a pedestrian based on probability and need type distribution
    */
   private generateNeed(): 'trash' | 'thirst' | null {
+    // First check: should we generate a need at all?
     const randomValue = Math.random();
     if (randomValue >= this.needGenerationProbability) {
       return null;
     }
     
-    // Randomly choose between trash and thirst (50/50 chance of each)
-    const needType = Math.random() < 0.5 ? 'trash' : 'thirst';
-    return needType;
+    // Second check: which specific need type based on distribution
+    const randomNeedValue = Math.random();
+    let cumulative = 0;
+    
+    for (const [needType, weight] of Object.entries(this.needTypeDistribution)) {
+      cumulative += weight;
+      if (randomNeedValue < cumulative) {
+        return needType as 'trash' | 'thirst';
+      }
+    }
+    
+    // Fallback (shouldn't happen if distribution is valid, but just in case)
+    return 'trash';
   }
 
   /**
@@ -301,7 +316,6 @@ export class PedestrianSystem {
           if (pedestrian.respawnTimer <= 0) {
             // Time to respawn - try to generate a need first
             const hasNeed = this.setupNeedForPedestrian(pedestrian, pedestrian.x, pedestrian.y);
-            
             if (hasNeed) {
               // Has need - go to need fulfillment first
               pedestrian.state = 'respawning';
@@ -599,8 +613,43 @@ export class PedestrianSystem {
 
   /**
    * Set need generation probability (0-1)
+   * This controls whether a pedestrian gets ANY need at all
    */
   setNeedGenerationProbability(probability: number): void {
     this.needGenerationProbability = Math.max(0, Math.min(1, probability));
+  }
+
+  /**
+   * Set the distribution of need types
+   * @param distribution Object with need types as keys and weights (0-1) as values
+   * Weights will be normalized to sum to 1.0 automatically
+   * Example: { trash: 0.5, thirst: 0.5 } for 50/50 split
+   * Example: { trash: 1.0, thirst: 0.0 } for 100% trash, 0% thirst
+   */
+  setNeedTypeDistribution(distribution: Partial<Record<'trash' | 'thirst', number>>): void {
+    // Get default values for any missing need types
+    const trashWeight = distribution.trash ?? 0;
+    const thirstWeight = distribution.thirst ?? 0;
+    
+    // Calculate total weight
+    const totalWeight = trashWeight + thirstWeight;
+    
+    // Normalize weights to sum to 1.0
+    if (totalWeight > 0) {
+      this.needTypeDistribution = {
+        trash: trashWeight / totalWeight,
+        thirst: thirstWeight / totalWeight
+      };
+    } else {
+      // If all weights are 0, default to 50/50
+      this.needTypeDistribution = { trash: 0.5, thirst: 0.5 };
+    }
+  }
+
+  /**
+   * Get the current need type distribution
+   */
+  getNeedTypeDistribution(): Record<'trash' | 'thirst', number> {
+    return { ...this.needTypeDistribution };
   }
 }

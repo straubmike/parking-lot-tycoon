@@ -10,7 +10,7 @@ export class NeedsSystem {
    * Get the need type that a ploppable fulfills, if any
    */
   static getPloppableNeedType(ploppable: Ploppable): 'trash' | 'thirst' | null {
-    if (ploppable.type === 'Trash Can') {
+    if (ploppable.type === 'Trash Can' || ploppable.type === 'Dumpster') {
       return 'trash';
     } else if (ploppable.type === 'Vending Machine') {
       return 'thirst';
@@ -20,6 +20,7 @@ export class NeedsSystem {
 
   /**
    * Get all ploppables that fulfill a specific need
+   * For 2-tile ploppables, only includes them once (from the primary cell)
    */
   static getPloppablesForNeed(
     needType: 'trash' | 'thirst',
@@ -34,7 +35,11 @@ export class NeedsSystem {
         const cellData = gridManager.getCellData(x, y);
         const ploppable = cellData?.ploppable;
         if (ploppable && this.getPloppableNeedType(ploppable) === needType) {
-          ploppables.push(ploppable);
+          // For 2-tile ploppables, only include from the primary cell (where ploppable.x, ploppable.y matches)
+          // This avoids duplicates since 2-tile ploppables are stored in both cells
+          if (ploppable.x === x && ploppable.y === y) {
+            ploppables.push(ploppable);
+          }
         }
       }
     }
@@ -46,6 +51,7 @@ export class NeedsSystem {
    * Calculate the target grid position for fulfilling a need at a ploppable
    * For Type A (passable): returns the centerpoint of the cell containing the ploppable
    * For Type B (impassable): returns the midpoint of the cell adjacent to the face of the ploppable
+   * For 2-tile Type B (dumpster): target is adjacent to the front face (primary cell's front face)
    */
   static getNeedTargetPosition(
     ploppable: Ploppable
@@ -56,7 +62,8 @@ export class NeedsSystem {
     } else {
       // Type B: Target is the midpoint of the cell adjacent to the face of the ploppable
       // Orientation: 0=north, 1=east, 2=south, 3=west
-      // For vending machine, the "face" is the side it's facing
+      // For vending machine and dumpster, the "face" is the side it's facing
+      // For 2-tile dumpsters, the front face is on the primary cell (ploppable.x, ploppable.y)
       const orientation = ploppable.orientation || 0;
       
       switch (orientation) {
