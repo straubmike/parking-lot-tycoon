@@ -1,6 +1,9 @@
 import { TimeSystem } from '@/systems/TimeSystem';
 import { RatingSystem } from '@/systems/RatingSystem';
 import { EconomySystem } from '@/systems/EconomySystem';
+import { AppealSystem } from '@/systems/AppealSystem';
+import { SecuritySystem } from '@/systems/SecuritySystem';
+import { GridManager } from './GridManager';
 
 /**
  * GameSystems - Central access point for all game systems
@@ -31,15 +34,36 @@ export class GameSystems {
   }
   
   /**
+   * Access the AppealSystem singleton
+   */
+  static get appeal(): AppealSystem {
+    return AppealSystem.getInstance();
+  }
+  
+  /**
+   * Access the SecuritySystem singleton
+   */
+  static get security(): SecuritySystem {
+    return SecuritySystem.getInstance();
+  }
+  
+  /**
    * Reset all systems for a new challenge
    * Call this when starting a new challenge or entering dev mode
    * 
    * @param initialBudget - Starting money for the challenge
+   * @param gridManager - Grid manager instance (optional, for resetting appeal/security)
+   * @param gridWidth - Grid width (optional)
+   * @param gridHeight - Grid height (optional)
    */
-  static resetForChallenge(initialBudget: number): void {
+  static resetForChallenge(initialBudget: number, gridManager?: GridManager, gridWidth?: number, gridHeight?: number): void {
     this.time.reset();
     this.rating.reset();
     this.economy.reset(initialBudget);
+    if (gridManager && gridWidth !== undefined && gridHeight !== undefined) {
+      this.appeal.reset(gridManager, gridWidth, gridHeight);
+      this.security.reset(gridManager, gridWidth, gridHeight);
+    }
   }
   
   /**
@@ -52,13 +76,16 @@ export class GameSystems {
    * - Triggering daily reset at midnight
    * 
    * @param delta - Time elapsed since last frame in milliseconds
+   * @param gridManager - Grid manager instance (optional, for composite rating calculation)
+   * @param gridWidth - Grid width (optional)
+   * @param gridHeight - Grid height (optional)
    */
-  static update(delta: number): void {
+  static update(delta: number, gridManager?: GridManager, gridWidth?: number, gridHeight?: number): void {
     this.time.update(delta);
     
     // Check for 11:59 PM rating finalization
     if (this.time.consumeRatingFinalized()) {
-      this.rating.finalizeDay();
+      this.rating.finalizeDay(gridManager, gridWidth, gridHeight);
     }
     
     // Check for midnight day change

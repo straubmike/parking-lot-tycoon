@@ -3,6 +3,8 @@ import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { GridManager } from '@/core/GridManager';
 import { Ploppable, CellData } from '@/types';
 import { PassabilitySystem } from './PassabilitySystem';
+import { AppealSystem } from './AppealSystem';
+import { SecuritySystem } from './SecuritySystem';
 
 /**
  * PloppableManager - Manages ploppable placement, removal, and rendering
@@ -273,6 +275,10 @@ export class PloppableManager {
       }
     }
     
+    // Apply AoE effects from appeal and security systems
+    AppealSystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, false);
+    SecuritySystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, false);
+    
     return true;
   }
 
@@ -323,6 +329,10 @@ export class PloppableManager {
       }
     }
     
+    // Remove AoE effects from appeal and security systems before removing the ploppable
+    AppealSystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, true);
+    SecuritySystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, true);
+    
     // Remove from primary cell
     gridManager.setCellData(gridX, gridY, { ploppable: undefined as any });
     
@@ -366,6 +376,22 @@ export class PloppableManager {
     if (ploppable.type === 'Trash Can') emoji = '🗑️';
     else if (ploppable.type === 'Vending Machine') emoji = '🥤';
     else if (ploppable.type === 'Dumpster') emoji = '🗄️';
+    else if (ploppable.type === 'Tree') emoji = '🌳';
+    else if (ploppable.type === 'Shrub') emoji = '🌿';
+    else if (ploppable.type === 'Flower Patch') emoji = '🌸';
+    
+    // Handle non-oriented ploppables (Tree, Shrub, Flower Patch) - render at center, no arrow
+    if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch') {
+      const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
+      const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+      
+      const label = scene.add.text(centerX, centerY, emoji, {
+        fontSize: '24px',
+      });
+      label.setOrigin(0.5, 0.5);
+      label.setDepth(3);
+      return label;
+    }
     
     if (orientationType === 'A') {
       // Type A: Position along rail extremities, but inside the cell

@@ -35,6 +35,9 @@ export class DevModeScene extends BaseGameplayScene {
   private pendingSpawnerCell: { x: number; y: number } | null = null; // Cell where spawner was placed, waiting for despawner
   private lastGridSizeX: number = 10; // Track last X input value
   private lastGridSizeY: number = 10; // Track last Y input value
+  private showAppealVisualization: boolean = false; // Show appeal visualization overlay
+  private showSecurityVisualization: boolean = false; // Show security visualization overlay
+  private visualizationGraphics!: Phaser.GameObjects.Graphics; // Separate graphics for appeal/security visualization
 
   constructor() {
     super({ key: 'DevModeScene' }, 10, 10); // gridWidth = 10, gridHeight = 10
@@ -42,7 +45,7 @@ export class DevModeScene extends BaseGameplayScene {
 
   protected setupScene(): void {
     // Initialize game systems for dev mode (starting budget of $10,000)
-    GameSystems.resetForChallenge(10000);
+    GameSystems.resetForChallenge(10000, this.gridManager, this.gridWidth, this.gridHeight);
     
     // Set need generation probability to 100% for dev mode (testing dumpsters)
     this.pedestrianSystem.setNeedGenerationProbability(1);
@@ -72,6 +75,10 @@ export class DevModeScene extends BaseGameplayScene {
     
     // Set up grid resize controls
     this.setupGridResizeControls();
+    
+    // Set up appeal and security visualization buttons
+    this.setupAppealVisualizationButton();
+    this.setupSecurityVisualizationButton();
   }
 
   // Grid rendering methods removed - now in BaseGameplayScene.render() and GridRenderer
@@ -82,6 +89,119 @@ export class DevModeScene extends BaseGameplayScene {
   // Wrapper method for rendering (calls base class render)
   private redrawGrid(): void {
     this.render();
+  }
+
+  /**
+   * Override create - don't create visualization graphics here, create it lazily when needed
+   */
+  create(): void {
+    super.create();
+    
+    // Don't create visualization graphics here - create it lazily when first needed
+    // This ensures it doesn't interfere with grid rendering
+  }
+  
+  /**
+   * Get or create visualization graphics object
+   */
+  private getVisualizationGraphics(): Phaser.GameObjects.Graphics {
+    if (!this.visualizationGraphics) {
+      this.visualizationGraphics = this.add.graphics();
+      this.visualizationGraphics.setDepth(1.6); // Above grid (0) but below lines (1), ploppables, etc.
+      this.visualizationGraphics.setVisible(false);
+      this.visualizationGraphics.setActive(false); // Inactive by default
+    }
+    return this.visualizationGraphics;
+  }
+
+  /**
+   * Override render to add appeal/security visualization
+   * The visualization should be rendered AFTER the grid so it overlays properly
+   */
+  protected render(): void {
+    // Call base class render (renders grid, lines, ploppables, etc.)
+    // This MUST be called first to render the grid
+    super.render();
+    
+    // Only render visualization if one of the modes is explicitly active
+    // Double-check flags to ensure we don't render when not needed
+    const shouldRender = this.showAppealVisualization || this.showSecurityVisualization;
+    if (shouldRender) {
+      this.renderAppealSecurityVisualization();
+    } else {
+      // When not active, ensure visualization graphics is cleared and hidden
+      if (this.visualizationGraphics) {
+        this.visualizationGraphics.clear();
+        this.visualizationGraphics.setVisible(false);
+        // Also set active to false to ensure it doesn't interfere
+        this.visualizationGraphics.setActive(false);
+      }
+    }
+  }
+
+  /**
+   * Render appeal or security visualization overlay
+   */
+  private renderAppealSecurityVisualization(): void {
+    // Safety check - should not be called if both are inactive, but check anyway
+    if (!this.showAppealVisualization && !this.showSecurityVisualization) {
+      if (this.visualizationGraphics) {
+        this.visualizationGraphics.clear();
+        this.visualizationGraphics.setVisible(false);
+      }
+      return;
+    }
+
+    // Get or create visualization graphics
+    const graphics = this.getVisualizationGraphics();
+    
+    // Always clear previous visualization first
+    graphics.clear();
+    
+    // Make sure graphics object is active and visible when rendering
+    graphics.setActive(true);
+    graphics.setVisible(true);
+    
+    for (let y = 0; y < this.gridHeight; y++) {
+      for (let x = 0; x < this.gridWidth; x++) {
+        const cellData = this.gridManager.getCellData(x, y);
+        let value: number;
+        
+        if (this.showAppealVisualization) {
+          value = cellData?.appeal ?? 0;
+        } else {
+          value = cellData?.security ?? 0;
+        }
+        
+        // Convert to boolean: positive = 1 (green), 0 or negative = 0 (red)
+        const isPositive = value > 0;
+        const color = isPositive ? 0x00ff00 : 0xff0000; // Green or red
+        const alpha = 0.3; // Semi-transparent overlay
+        
+        // Get cell points for highlighting
+        const points = getIsometricTilePoints(x, y);
+        const offsetPoints = points.map(p => ({
+          x: p.x + this.gridOffsetX,
+          y: p.y + this.gridOffsetY
+        }));
+        
+        // Fill the cell with the color (using two triangles to form diamond)
+        // Diamond points: [0]=top, [1]=right, [2]=bottom, [3]=left
+        graphics.fillStyle(color, alpha);
+        // Top triangle: top, right, left
+        graphics.fillTriangle(
+          offsetPoints[0].x, offsetPoints[0].y,
+          offsetPoints[1].x, offsetPoints[1].y,
+          offsetPoints[3].x, offsetPoints[3].y
+        );
+        // Bottom triangle: bottom, right, left
+        graphics.fillTriangle(
+          offsetPoints[2].x, offsetPoints[2].y,
+          offsetPoints[1].x, offsetPoints[1].y,
+          offsetPoints[3].x, offsetPoints[3].y
+        );
+      }
+    }
   }
 
   // All rendering methods removed - now in BaseGameplayScene.render() and extracted renderers
@@ -344,6 +464,13 @@ export class DevModeScene extends BaseGameplayScene {
           offsetPoints[endIdx].y
         );
       });
+    } else if (this.selectedPloppableType === 'Tree' || this.selectedPloppableType === 'Shrub' || this.selectedPloppableType === 'Flower Patch') {
+      // Draw preview for non-oriented ploppables (center emoji, no orientation)
+      this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
+      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
     } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
       // Draw preview for oriented ploppables
       // Get orientation type and size from button data
@@ -686,6 +813,9 @@ export class DevModeScene extends BaseGameplayScene {
             demolishButton.classList.remove('selected');
           }
           
+          // Clear visualization modes
+          this.clearVisualizationModes();
+          
           // Clear hover state when switching modes
           this.clearHighlight();
           
@@ -935,6 +1065,7 @@ export class DevModeScene extends BaseGameplayScene {
             this.pendingSpawnerCell = null;
             this.isPermanentMode = false;
             this.isDemolishMode = false;
+            this.clearVisualizationModes();
             
             // Clear button selections
             document.querySelectorAll('.color-button').forEach(btn => {
@@ -986,6 +1117,7 @@ export class DevModeScene extends BaseGameplayScene {
             this.selectedPloppableType = null;
             this.isPermanentMode = false;
             this.isDemolishMode = false;
+            this.clearVisualizationModes();
             
             // Clear button selections
             document.querySelectorAll('.color-button').forEach(btn => {
@@ -1048,6 +1180,7 @@ export class DevModeScene extends BaseGameplayScene {
             this.isVehicleSpawnerMode = false;
             this.isDemolishMode = false;
             this.pendingSpawnerCell = null;
+            this.clearVisualizationModes();
             
             // Clear color button selections
             document.querySelectorAll('.color-button').forEach(btn => {
@@ -1095,6 +1228,7 @@ export class DevModeScene extends BaseGameplayScene {
             this.isVehicleSpawnerMode = false;
             this.isPermanentMode = false;
             this.pendingSpawnerCell = null;
+            this.clearVisualizationModes();
             
             // Clear button selections
             document.querySelectorAll('.color-button').forEach(btn => {
@@ -1124,6 +1258,74 @@ export class DevModeScene extends BaseGameplayScene {
             this.clearHighlight();
             this.updateSelectionInfo();
           }
+        });
+      }
+    });
+  }
+
+  /**
+   * Clear visualization modes (helper method)
+   */
+  private clearVisualizationModes(): void {
+    this.showAppealVisualization = false;
+    this.showSecurityVisualization = false;
+    const appealButton = document.getElementById('appeal-visualization-button');
+    const securityButton = document.getElementById('security-visualization-button');
+    if (appealButton) appealButton.classList.remove('selected');
+    if (securityButton) securityButton.classList.remove('selected');
+  }
+
+  private setupAppealVisualizationButton(): void {
+    this.time.delayedCall(100, () => {
+      const appealButton = document.getElementById('appeal-visualization-button');
+      
+      if (appealButton) {
+        appealButton.addEventListener('click', () => {
+          // Toggle appeal visualization
+          this.showAppealVisualization = !this.showAppealVisualization;
+          
+          // If enabling appeal, disable security (mutually exclusive)
+          if (this.showAppealVisualization) {
+            this.showSecurityVisualization = false;
+            const securityButton = document.getElementById('security-visualization-button');
+            if (securityButton) {
+              securityButton.classList.remove('selected');
+            }
+            appealButton.classList.add('selected');
+          } else {
+            appealButton.classList.remove('selected');
+          }
+          
+          // Redraw to show/hide visualization
+          this.redrawGrid();
+        });
+      }
+    });
+  }
+
+  private setupSecurityVisualizationButton(): void {
+    this.time.delayedCall(100, () => {
+      const securityButton = document.getElementById('security-visualization-button');
+      
+      if (securityButton) {
+        securityButton.addEventListener('click', () => {
+          // Toggle security visualization
+          this.showSecurityVisualization = !this.showSecurityVisualization;
+          
+          // If enabling security, disable appeal (mutually exclusive)
+          if (this.showSecurityVisualization) {
+            this.showAppealVisualization = false;
+            const appealButton = document.getElementById('appeal-visualization-button');
+            if (appealButton) {
+              appealButton.classList.remove('selected');
+            }
+            securityButton.classList.add('selected');
+          } else {
+            securityButton.classList.remove('selected');
+          }
+          
+          // Redraw to show/hide visualization
+          this.redrawGrid();
         });
       }
     });

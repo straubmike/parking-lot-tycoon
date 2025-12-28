@@ -18,6 +18,9 @@ export class PassabilitySystem {
     'Trash Can': true, // Trash cans are passable (pedestrians can walk past them)
     'Vending Machine': false, // Vending machines are impassable (block movement)
     'Dumpster': false, // Dumpsters are impassable (block movement)
+    'Tree': false, // Trees are impassable (block movement)
+    'Shrub': false, // Shrubs are impassable (block movement)
+    'Flower Patch': true, // Flower patches are passable (decorations)
     'entrance': true, // Entrances are passable
     'exit': true, // Exits are passable
     'Pedestrian Spawner': true, // Spawners are passable

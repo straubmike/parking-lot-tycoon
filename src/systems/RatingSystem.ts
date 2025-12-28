@@ -1,4 +1,7 @@
 import { TimeSystem } from './TimeSystem';
+import { GridManager } from '@/core/GridManager';
+import { AppealSystem } from './AppealSystem';
+import { SecuritySystem } from './SecuritySystem';
 
 /**
  * RatingSystem - Singleton that manages lot ratings based on parker satisfaction
@@ -133,9 +136,19 @@ export class RatingSystem {
   /**
    * Called at 11:59 PM - finalize the day's rating
    * Stores current rating as previous day rating
+   * 
+   * @param gridManager - Grid manager instance (optional, for composite rating)
+   * @param gridWidth - Grid width (optional)
+   * @param gridHeight - Grid height (optional)
    */
-  finalizeDay(): void {
-    this.previousDayRating = this.currentRating;
+  finalizeDay(gridManager?: GridManager, gridWidth?: number, gridHeight?: number): void {
+    if (gridManager && gridWidth !== undefined && gridHeight !== undefined) {
+      // Store composite rating if grid info provided
+      this.previousDayRating = this.getCompositeRating(gridManager, gridWidth, gridHeight);
+    } else {
+      // Store parker-only rating for backward compatibility
+      this.previousDayRating = this.currentRating;
+    }
   }
   
   /**
@@ -153,10 +166,49 @@ export class RatingSystem {
   }
   
   /**
-   * Get current day's running average rating
+   * Get current day's running average rating (parker satisfaction component only, 0-100)
    */
   getCurrentRating(): number {
     return this.currentRating;
+  }
+  
+  /**
+   * Get composite rating including appeal and security components
+   * Formula: 70% parker satisfaction + 15% appeal + 15% security
+   * 
+   * @param gridManager - Grid manager instance
+   * @param gridWidth - Grid width
+   * @param gridHeight - Grid height
+   * @returns Composite rating (0-100)
+   */
+  getCompositeRating(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
+    const parkerRating = this.currentRating; // 0-100
+    const appealContribution = AppealSystem.getInstance().getAppealContribution(gridManager, gridWidth, gridHeight);
+    const securityContribution = SecuritySystem.getInstance().getSecurityContribution(gridManager, gridWidth, gridHeight);
+    
+    return (parkerRating * 0.70) + appealContribution + securityContribution;
+  }
+  
+  /**
+   * Get component breakdown for UI display
+   * 
+   * @param gridManager - Grid manager instance
+   * @param gridWidth - Grid width
+   * @param gridHeight - Grid height
+   * @returns Object with parker, appeal, security, and total ratings
+   */
+  getComponentRatings(gridManager: GridManager, gridWidth: number, gridHeight: number): {
+    parker: number;
+    appeal: number;
+    security: number;
+    total: number;
+  } {
+    const parker = this.currentRating;
+    const appeal = AppealSystem.getInstance().getAppealContribution(gridManager, gridWidth, gridHeight);
+    const security = SecuritySystem.getInstance().getSecurityContribution(gridManager, gridWidth, gridHeight);
+    const total = (parker * 0.70) + appeal + security;
+    
+    return { parker, appeal, security, total };
   }
   
   /**

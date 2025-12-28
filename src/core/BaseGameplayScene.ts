@@ -216,7 +216,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    */
   update(_time: number, delta: number): void {
     // Update central game systems (time, rating triggers, etc.)
-    GameSystems.update(delta);
+    GameSystems.update(delta, this.gridManager, this.gridWidth, this.gridHeight);
     
     // Update entity systems
     this.updateEntities(delta);
@@ -258,11 +258,11 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       budgetEl.textContent = `$${GameSystems.economy.getMoney().toLocaleString()}`;
     }
     if (ratingEl) {
-      const current = GameSystems.rating.getCurrentRating();
+      const components = GameSystems.rating.getComponentRatings(this.gridManager, this.gridWidth, this.gridHeight);
       const currentDay = GameSystems.time.getCurrentDay();
       const previous = currentDay === 0 ? null : GameSystems.rating.getPreviousDayRating();
-      const previousDisplay = previous === null ? 'n/a' : previous.toFixed(0);
-      ratingEl.textContent = `${current.toFixed(0)} : ${previousDisplay}`;
+      const previousDisplay = previous === null ? 'n/a' : previous.toFixed(1);
+      ratingEl.textContent = `${components.total.toFixed(1)} : ${previousDisplay} (Parker: ${components.parker.toFixed(1)}, Appeal: ${components.appeal.toFixed(0)}, Security: ${components.security.toFixed(0)})`;
     }
   }
 

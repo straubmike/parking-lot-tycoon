@@ -229,7 +229,7 @@
             </div>
             <div class="stat-item">
                 <span class="stat-label">Day</span>
-                <span id="game-day" class="stat-value">Day 0</span>
+                <span id="game-day" class="stat-value">0</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Budget</span>
@@ -264,6 +264,9 @@
                 <button class="ploppable-button" data-name="Trash Can" data-description="A small trash can. Passable by pedestrians and vehicles. Use Q/E to change position along cell borders." data-orientation-type="A" data-passable="true">🗑️</button>
                 <button class="ploppable-button" data-name="Vending Machine" data-description="Dispenses refreshments. Impassable. Use Q/E to rotate and change which way the front faces." data-orientation-type="B" data-passable="false">🥤</button>
                 <button class="ploppable-button" data-name="Dumpster" data-description="A large trash receptacle that can be used like a trash can for pedestrians, but is also a requirement for some challenges. Dumpsters negatively impact lot appeal. Impassable. Use Q/E to rotate and change which way the front faces." data-orientation-type="B" data-passable="false" data-size="2">🗄️</button>
+                <button class="ploppable-button" data-name="Tree" data-description="Trees are decorative barriers that increase lot appeal." data-passable="false">🌳</button>
+                <button class="ploppable-button" data-name="Shrub" data-description="Shrubs are decorative barriers that increase lot appeal." data-passable="false">🌿</button>
+                <button class="ploppable-button" data-name="Flower Patch" data-description="Flowers are decorations that increase lot appeal." data-passable="true">🌸</button>
             </div>
             
             <div class="section-title">Tools</div>
@@ -271,6 +274,8 @@
             <button id="vehicle-spawner-button" class="action-button">🚗 Vehicle Spawner</button>
             <button id="pedestrian-spawner-button" class="action-button">🚶 Pedestrian De/Respawner</button>
             <button id="permanent-button" class="action-button">Mark Permanent</button>
+            <button id="appeal-visualization-button" class="action-button">Appeal</button>
+            <button id="security-visualization-button" class="action-button">Security</button>
             
             <div class="section-title" style="margin-top: 20px;">Grid Size</div>
             <div style="display: flex; gap: 5px; margin-bottom: 10px;">
