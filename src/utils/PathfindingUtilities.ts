@@ -1,6 +1,7 @@
 import { GridManager } from '@/core/GridManager';
 import { CellData } from '@/types';
 import { getIsometricTilePoints, isoToScreen } from './isometric';
+import { PassabilitySystem } from '@/systems/PassabilitySystem';
 
 /**
  * PathfindingUtilities - Utility functions for pathfinding and edge blocking
@@ -105,10 +106,10 @@ export class PathfindingUtilities {
 
   /**
    * Check if an edge blocks a specific entity type
-   * - Vehicles: Blocked by curbs, fences, lane lines (directional), and parking spot borders
-   * - Pedestrians: Blocked only by fences
+   * - Vehicles: Blocked by curbs, fences, lane lines (directional), parking spot borders, and impassable ploppables
+   * - Pedestrians: Blocked by fences and impassable ploppables
    * 
-   * @param isEntryEdge - If true, this is an entry edge (check parking spots, lane lines, curbs). If false, this is a corridor edge (only check fences).
+   * @param isEntryEdge - If true, this is an entry edge (check parking spots, lane lines, curbs, ploppables). If false, this is a corridor edge (only check fences).
    * @param movementDirection - The direction of movement (for lane line "drive on the right" logic)
    */
   static isEdgeBlockedForEntity(
@@ -187,21 +188,63 @@ export class PathfindingUtilities {
       }
     }
     
-    // Check parking spot borders (only block vehicles, and only if isEntryEdge is true)
-    // Parking spot borders only block direct entry into the spot, not corridor movement
-    // NOTE: We only check the current cell, not neighbors, because parking spot borders
-    // should only block entry into the parking spot cell itself, not movement past adjacent cells
+    // Check parking spot borders on entry edges (only for vehicles)
+    // When isEntryEdge is true, cellX/cellY is the target cell and edge is the target edge
+    // Parking spot borders are on the parking spot cell itself, so check directly
     if (entityType === 'vehicle' && isEntryEdge) {
-      if (this.isParkingSpotEdgeBlocked(cellX, cellY, edge, gridManager)) {
+      const isParkingSpotBlocked = this.isParkingSpotEdgeBlocked(cellX, cellY, edge, gridManager);
+      if (isParkingSpotBlocked) {
         return true;
       }
-      
-      // REMOVED: Neighbor cell check for parking spots
-      // This was incorrectly blocking vehicles from passing by parking spots in adjacent cells.
-      // Parking spot borders should only block entry into the parking spot cell itself.
+    }
+    
+    // Check for impassable ploppables in the target cell (only on entry edges)
+    // When isEntryEdge is true, cellX/cellY IS the target cell (from getEdgesToCheck)
+    // So we check the ploppable directly on this cell
+    if (isEntryEdge) {
+      const cellData = gridManager.getCellData(cellX, cellY);
+      if (cellData?.ploppable) {
+        const blocksEntity = PassabilitySystem.doesPloppableBlockEntity(cellData.ploppable, entityType);
+        if (blocksEntity) {
+          return true;
+        }
+      }
     }
     
     return false;
+  }
+
+  /**
+   * Get the target cell coordinates when moving in a given direction from a source cell
+   * @param fromX - Source cell X
+   * @param fromY - Source cell Y
+   * @param direction - Direction of movement
+   * @returns Target cell coordinates, or null if out of bounds
+   */
+  private static getTargetCellForMovement(
+    fromX: number,
+    fromY: number,
+    direction: 'north' | 'south' | 'east' | 'west'
+  ): { x: number; y: number } | null {
+    let targetX = fromX;
+    let targetY = fromY;
+    
+    switch (direction) {
+      case 'north':
+        targetY = fromY - 1;
+        break;
+      case 'south':
+        targetY = fromY + 1;
+        break;
+      case 'east':
+        targetX = fromX + 1;
+        break;
+      case 'west':
+        targetX = fromX - 1;
+        break;
+    }
+    
+    return { x: targetX, y: targetY };
   }
 
   /**

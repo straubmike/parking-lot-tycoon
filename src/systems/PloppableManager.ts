@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { GridManager } from '@/core/GridManager';
 import { Ploppable, CellData } from '@/types';
+import { PassabilitySystem } from './PassabilitySystem';
 
 /**
  * PloppableManager - Manages ploppable placement, removal, and rendering
@@ -153,6 +154,7 @@ export class PloppableManager {
   /**
    * Place a ploppable at the given cell
    * Returns true if placement was successful
+   * Automatically sets the passable property based on ploppable type if not already set
    */
   static placePloppable(
     gridX: number,
@@ -162,6 +164,11 @@ export class PloppableManager {
   ): boolean {
     if (!this.canPlacePloppable(gridX, gridY, gridManager)) {
       return false;
+    }
+    
+    // Set passable property if not already set (based on ploppable type)
+    if (ploppable.passable === undefined) {
+      ploppable.passable = PassabilitySystem.getPassableValueForType(ploppable.type);
     }
     
     gridManager.setCellData(gridX, gridY, { ploppable });
