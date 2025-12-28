@@ -314,7 +314,12 @@ export class PedestrianSystem {
           pedestrian.respawnTimer -= delta;
           
           if (pedestrian.respawnTimer <= 0) {
-            // Time to respawn - try to generate a need first
+            // Time to respawn - clear destination to indicate we're in return phase (going to vehicle)
+            // This ensures that if they get a need, they'll continue to vehicle after fulfilling it
+            pedestrian.destinationX = undefined;
+            pedestrian.destinationY = undefined;
+            
+            // Try to generate a need first
             const hasNeed = this.setupNeedForPedestrian(pedestrian, pedestrian.x, pedestrian.y);
             if (hasNeed) {
               // Has need - go to need fulfillment first

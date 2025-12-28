@@ -58,6 +58,8 @@ When adding a new ploppable, ensure you complete all of the following:
 - [ ] Add emoji mapping in `PloppableManager.drawPloppable()`
 - [ ] Add passability rule in `PassabilitySystem.DEFAULT_PASSABILITY`
 - [ ] Add need type mapping in `NeedsSystem.getPloppableNeedType()` (if applicable)
+- [ ] Add appeal config in `AppealSystem.ploppableConfigs` (if applicable)
+- [ ] Add security config in `SecuritySystem.ploppableConfigs` (if applicable)
 - [ ] Update `DevModeScene` to handle placement, preview, and rotation
 - [ ] Update `PloppableManager.canPlacePloppable()` for 2-tile ploppables (if applicable)
 - [ ] Update `PloppableManager.placePloppable()` for 2-tile ploppables (if applicable)
@@ -117,6 +119,26 @@ When adding a new ploppable, ensure you complete all of the following:
   if (ploppable.type === 'Trash Can' || ploppable.type === 'Dumpster') {
     return 'trash';
   }
+  ```
+
+#### `src/systems/AppealSystem.ts`
+- **Purpose**: Defines which ploppables affect appeal values in surrounding cells
+- **What to add**: Entry in `ploppableConfigs` object
+- **Configuration**: `appealDelta` (positive or negative), `radius` (cells), `shape` ('circular' or 'square'), optional `isTwoTile`
+- **Example**:
+  ```typescript
+  'Tree': { appealDelta: 1, radius: 3, shape: 'circular' },
+  'Dumpster': { appealDelta: -1, radius: 3, shape: 'circular', isTwoTile: true },
+  ```
+
+#### `src/systems/SecuritySystem.ts`
+- **Purpose**: Defines which ploppables affect security values in surrounding cells
+- **What to add**: Entry in `ploppableConfigs` object
+- **Configuration**: `securityDelta` (positive or negative), `radius` (cells), `shape` ('circular' or 'square'), optional `isTwoTile`
+- **Example**:
+  ```typescript
+  'Street Light': { securityDelta: 1, radius: 2, shape: 'circular' },
+  'Security Camera': { securityDelta: 1, radius: 8, shape: 'circular' },
   ```
 
 #### `src/scenes/DevModeScene.ts`
@@ -315,10 +337,13 @@ if (secondCell) {
 
 - **Passability**: Impassable ploppables block both vehicles and pedestrians
 - **Needs Fulfillment**: Type A targets the ploppable's cell center; Type B targets the cell adjacent to the front face
-- **Appeal System**: Not yet implemented, but can be added to RatingSystem
+- **Appeal System**: Ploppables can affect appeal values in cells within a radius. Configure in `AppealSystem.ploppableConfigs` with `appealDelta`, `radius`, `shape`, and optional `isTwoTile`.
+- **Security System**: Ploppables can affect security values in cells within a radius. Configure in `SecuritySystem.ploppableConfigs` with `securityDelta`, `radius`, `shape`, and optional `isTwoTile`. Security contributes 15 points to lot rating based on percentage of cells with positive security.
 - **Cost**: Currently set to 0 in DevModeScene, but can be added to ploppable object
 - **Serialization**: GridManager automatically handles saving/loading ploppables
 - **Demolition**: Works automatically via `PloppableManager.removePloppable()`
+- **Special Placement Rules**: Some ploppables (like Security Camera) can only be placed on cells that already contain specific ploppables (like Street Light). Implement validation in `DevModeScene.paintCell()` and handle replacement/restoration logic in `DevModeScene.demolishAtCell()`.
+- **Special Placement Rules**: Some ploppables (like Security Camera) can only be placed on cells that already contain specific ploppables (like Street Light). Implement validation in `DevModeScene.paintCell()` and handle replacement/restoration logic in `DevModeScene.demolishAtCell()`.
 
 ## Testing Checklist
 
@@ -332,6 +357,8 @@ After implementing a new ploppable:
 - [ ] Demolition tool removes the ploppable
 - [ ] Passability works correctly (entities can/cannot pass)
 - [ ] Needs fulfillment works (if applicable)
+- [ ] Appeal/Security AoE works correctly (if applicable)
 - [ ] 2-tile ploppables place/remove from both cells correctly
 - [ ] No duplicate ploppables in needs system (for 2-tile)
+- [ ] Special placement rules work (if applicable, e.g., Security Camera on Street Light)
 

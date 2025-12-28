@@ -379,9 +379,11 @@ export class PloppableManager {
     else if (ploppable.type === 'Tree') emoji = '🌳';
     else if (ploppable.type === 'Shrub') emoji = '🌿';
     else if (ploppable.type === 'Flower Patch') emoji = '🌸';
+    else if (ploppable.type === 'Street Light') emoji = '💡';
+    else if (ploppable.type === 'Security Camera') emoji = '📹';
     
-    // Handle non-oriented ploppables (Tree, Shrub, Flower Patch) - render at center, no arrow
-    if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch') {
+    // Handle non-oriented ploppables (Tree, Shrub, Flower Patch, Security Camera) - render at center, no arrow
+    if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Security Camera') {
       const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
       

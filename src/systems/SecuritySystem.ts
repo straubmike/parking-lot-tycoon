@@ -25,7 +25,8 @@ export class SecuritySystem {
     shape: 'circular' | 'square';
     isTwoTile?: boolean;
   }> = {
-    // Currently no ploppables affect security, but add future security ploppables here
+    'Street Light': { securityDelta: 1, radius: 2, shape: 'circular' },
+    'Security Camera': { securityDelta: 1, radius: 8, shape: 'circular' },
   };
   
   private constructor() {}

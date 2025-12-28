@@ -21,6 +21,8 @@ export class PassabilitySystem {
     'Tree': false, // Trees are impassable (block movement)
     'Shrub': false, // Shrubs are impassable (block movement)
     'Flower Patch': true, // Flower patches are passable (decorations)
+    'Street Light': true, // Street lights are passable
+    'Security Camera': true, // Security cameras are passable
     'entrance': true, // Entrances are passable
     'exit': true, // Exits are passable
     'Pedestrian Spawner': true, // Spawners are passable

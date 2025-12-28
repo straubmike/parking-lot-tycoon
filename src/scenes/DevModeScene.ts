@@ -7,6 +7,7 @@ import { PloppableManager } from '@/systems/PloppableManager';
 import { SpawnerManager } from '@/managers/SpawnerManager';
 import { GridInteractionHandler } from '@/systems/GridInteractionHandler';
 import { GridManager } from '@/core/GridManager';
+import { SecuritySystem } from '@/systems/SecuritySystem';
 
 export class DevModeScene extends BaseGameplayScene {
   // Dev mode specific state
@@ -33,8 +34,6 @@ export class DevModeScene extends BaseGameplayScene {
   private isVehicleSpawnerMode: boolean = false;
   private isDemolishMode: boolean = false; // Demolish mode for removing ploppables
   private pendingSpawnerCell: { x: number; y: number } | null = null; // Cell where spawner was placed, waiting for despawner
-  private lastGridSizeX: number = 10; // Track last X input value
-  private lastGridSizeY: number = 10; // Track last Y input value
   private showAppealVisualization: boolean = false; // Show appeal visualization overlay
   private showSecurityVisualization: boolean = false; // Show security visualization overlay
   private visualizationGraphics!: Phaser.GameObjects.Graphics; // Separate graphics for appeal/security visualization
@@ -47,10 +46,10 @@ export class DevModeScene extends BaseGameplayScene {
     // Initialize game systems for dev mode (starting budget of $10,000)
     GameSystems.resetForChallenge(10000, this.gridManager, this.gridWidth, this.gridHeight);
     
-    // Set need generation probability to 100% for dev mode (testing dumpsters)
-    this.pedestrianSystem.setNeedGenerationProbability(1);
-    // Set need type distribution to 100% trash for testing dumpsters
-    this.pedestrianSystem.setNeedTypeDistribution({ trash: 1.0, thirst: 0.0 });
+    // Set need generation probability to 50%
+    this.pedestrianSystem.setNeedGenerationProbability(0.5);
+    // Set need type distribution to 50% thirst, 50% trash
+    this.pedestrianSystem.setNeedTypeDistribution({ trash: 0.5, thirst: 0.5 });
     
     // Set up keyboard controls
     this.setupKeyboardControls();
@@ -319,9 +318,19 @@ export class DevModeScene extends BaseGameplayScene {
         return;
       }
       
-      // Check if cell already has a ploppable, spawner, or despawner
-      if (!PloppableManager.canPlacePloppable(gridX, gridY, this.gridManager, this.selectedPloppableType || undefined, this.ploppableOrientation, this.gridWidth, this.gridHeight)) {
-        return;
+      // Special validation for Security Camera: must be placed on a cell with Street Light
+      if (this.selectedPloppableType === 'Security Camera') {
+        const cellData = this.gridManager.getCellData(gridX, gridY);
+        if (!cellData?.ploppable || cellData.ploppable.type !== 'Street Light') {
+          return; // Cannot place Security Camera without Street Light
+        }
+        // Security Camera can be placed even if cell already has a ploppable (Street Light)
+        // We'll handle this specially below
+      } else {
+        // Check if cell already has a ploppable, spawner, or despawner
+        if (!PloppableManager.canPlacePloppable(gridX, gridY, this.gridManager, this.selectedPloppableType || undefined, this.ploppableOrientation, this.gridWidth, this.gridHeight)) {
+          return;
+        }
       }
       
       // Get ploppable properties from button data attributes
@@ -329,6 +338,41 @@ export class DevModeScene extends BaseGameplayScene {
       const orientationType = button?.getAttribute('data-orientation-type') as 'A' | 'B' | undefined;
       const passableAttr = button?.getAttribute('data-passable');
       const passable = passableAttr === 'true';
+      
+      // Special handling for Security Camera: replace Street Light's security AoE
+      if (this.selectedPloppableType === 'Security Camera') {
+        const cellData = this.gridManager.getCellData(gridX, gridY);
+        const streetLight = cellData?.ploppable;
+        if (streetLight && streetLight.type === 'Street Light') {
+          // Remove Street Light's security AoE (2 radius)
+          SecuritySystem.getInstance().applyPloppableAoE(streetLight, this.gridManager, this.gridWidth, this.gridHeight, true);
+          
+          // Create Security Camera ploppable
+          const securityCamera: Ploppable = {
+            id: `${this.selectedPloppableType}-${gridX}-${gridY}-${Date.now()}`,
+            type: this.selectedPloppableType,
+            x: gridX,
+            y: gridY,
+            cost: 0,
+            orientation: 0, // Security Camera doesn't need orientation
+            orientationType: undefined,
+            passable: passable
+          };
+          
+          // Replace Street Light with Security Camera in cell data
+          this.gridManager.setCellData(gridX, gridY, { ploppable: securityCamera });
+          
+          // Apply Security Camera's security AoE (8 radius)
+          SecuritySystem.getInstance().applyPloppableAoE(securityCamera, this.gridManager, this.gridWidth, this.gridHeight, false);
+          
+          // Redraw grid
+          this.redrawGrid();
+          
+          // Remember last painted cell
+          this.lastPaintedCell = { x: gridX, y: gridY };
+          return;
+        }
+      }
       
       // Create ploppable
       const ploppable: Ploppable = {
@@ -467,6 +511,32 @@ export class DevModeScene extends BaseGameplayScene {
     } else if (this.selectedPloppableType === 'Tree' || this.selectedPloppableType === 'Shrub' || this.selectedPloppableType === 'Flower Patch') {
       // Draw preview for non-oriented ploppables (center emoji, no orientation)
       this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
+      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+    } else if (this.selectedPloppableType === 'Street Light') {
+      // Draw preview for Street Light (Type A orientation)
+      const centerX = (offsetPoints[0].x + offsetPoints[2].x) / 2;
+      const centerY = (offsetPoints[0].y + offsetPoints[2].y) / 2;
+      
+      this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
+      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+      
+      // Draw Type A position indicator
+      const indicatorPos = PloppableManager.getTypeAPosition(centerX, centerY, this.ploppableOrientation);
+      this.highlightGraphics.fillStyle(0x00ff00, 0.8);
+      this.highlightGraphics.fillCircle(indicatorPos.x, indicatorPos.y, 4);
+    } else if (this.selectedPloppableType === 'Security Camera') {
+      // Draw preview for Security Camera (check if Street Light exists)
+      const cellData = this.gridManager.getCellData(gridX, gridY);
+      const hasStreetLight = cellData?.ploppable?.type === 'Street Light';
+      const highlightColor = hasStreetLight ? 0x00ff00 : 0xff0000; // Green if valid, red if invalid
+      
+      this.highlightGraphics.lineStyle(1.5, highlightColor, 0.6);
       this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
       this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
       this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
@@ -933,8 +1003,12 @@ export class DevModeScene extends BaseGameplayScene {
           if (this.selectedPloppableType === 'Parking Spot' || 
               this.selectedPloppableType === 'Trash Can' || 
               this.selectedPloppableType === 'Vending Machine' ||
-              this.selectedPloppableType === 'Dumpster') {
+              this.selectedPloppableType === 'Dumpster' ||
+              this.selectedPloppableType === 'Street Light') {
             description += '\n\nUse Q and E keys to rotate orientation.';
+          }
+          if (this.selectedPloppableType === 'Security Camera') {
+            description += '\n\nNote: Security cameras can only be placed on cells that already contain a Street Light.';
           }
         }
         selectionDescription.textContent = description;
@@ -970,7 +1044,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Street Light') {
         // Rotate counter-clockwise (Q): 0 -> 3 -> 2 -> 1 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
         // Update highlight if hovering over a cell
@@ -991,7 +1065,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Street Light') {
         // Rotate clockwise (E): 0 -> 1 -> 2 -> 3 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         // Update highlight if hovering over a cell
@@ -1357,6 +1431,29 @@ export class DevModeScene extends BaseGameplayScene {
     if (cellData.ploppable) {
       const ploppableType = cellData.ploppable.type;
       
+      // Special handling for Security Camera: restore Street Light when removed
+      if (ploppableType === 'Security Camera') {
+        // Remove Security Camera's security AoE (8 radius)
+        PloppableManager.removePloppable(gridX, gridY, this.gridManager, this.gridWidth, this.gridHeight);
+        
+        // Restore Street Light with default orientation
+        const streetLight: Ploppable = {
+          id: `Street Light-${gridX}-${gridY}-${Date.now()}`,
+          type: 'Street Light',
+          x: gridX,
+          y: gridY,
+          cost: 0,
+          orientation: 0, // Default orientation
+          orientationType: 'A',
+          passable: true
+        };
+        
+        // Place Street Light
+        PloppableManager.placePloppable(gridX, gridY, streetLight, this.gridManager, this.gridWidth, this.gridHeight);
+        needsRedraw = true;
+        return;
+      }
+      
       // If it's a pedestrian spawner, remove from pedestrian system
       if (ploppableType === 'Pedestrian Spawner') {
         SpawnerManager.removePedestrianSpawner(gridX, gridY, this.pedestrianSystem);
@@ -1413,10 +1510,6 @@ export class DevModeScene extends BaseGameplayScene {
       if (gridSizeYInput) {
         gridSizeYInput.value = this.gridHeight.toString();
       }
-      
-      // Initialize last values
-      this.lastGridSizeX = this.gridWidth;
-      this.lastGridSizeY = this.gridHeight;
 
       if (resizeButton) {
         resizeButton.addEventListener('click', (e) => {
@@ -1439,7 +1532,7 @@ export class DevModeScene extends BaseGameplayScene {
           
           // Resize the grid
           try {
-            this.resizeGrid(newSizeX, newSizeY, newSizeX, newSizeY);
+            this.resizeGrid(newSizeX, newSizeY);
           } catch (error) {
             console.error('Error resizing grid:', error);
             alert('Error resizing grid. Check console for details.');
@@ -1451,17 +1544,13 @@ export class DevModeScene extends BaseGameplayScene {
     });
   }
 
-  private resizeGrid(newWidth: number, newHeight: number, inputX: number, inputY: number): void {
+  private resizeGrid(newWidth: number, newHeight: number): void {
     // Store existing grid data
     const serializedData = this.gridManager.serializeGrid();
     
     // Update grid dimensions
     this.gridWidth = newWidth;
     this.gridHeight = newHeight;
-    
-    // Update last input values
-    this.lastGridSizeX = inputX;
-    this.lastGridSizeY = inputY;
     
     // Create new GridManager with new dimensions
     this.gridManager = new GridManager(this.gridWidth, this.gridHeight);
@@ -1519,10 +1608,6 @@ export class DevModeScene extends BaseGameplayScene {
     if (gridSizeYInput) {
       gridSizeYInput.value = this.gridHeight.toString();
     }
-    
-    // Update last values to match what's displayed
-    this.lastGridSizeX = this.gridWidth;
-    this.lastGridSizeY = this.gridHeight;
   }
 
   // update() and updateGameUI() removed - now in BaseGameplayScene

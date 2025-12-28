@@ -77,8 +77,19 @@ export class EntityRenderer {
       graphics.fillCircle(screenX, screenY, 3); // 3 pixel radius
       
       // Draw a larger circle at the destination cell (cell center)
-      // Show destination when going to destination, show vehicle when returning
-      if (pedestrian.state === 'going_to_destination' && pedestrian.destinationX !== undefined && pedestrian.destinationY !== undefined) {
+      // Show destination when going to destination, show vehicle when returning, show need target when fulfilling needs
+      if ((pedestrian.state === 'going_to_need' || pedestrian.state === 'fulfilling_need') && 
+          pedestrian.needTargetX !== undefined && pedestrian.needTargetY !== undefined) {
+        // Show need fulfillment target location
+        const needScreenPos = isoToScreen(pedestrian.needTargetX, pedestrian.needTargetY);
+        const needScreenX = needScreenPos.x + gridOffsetX;
+        const needScreenY = needScreenPos.y + gridOffsetY;
+        
+        graphics.lineStyle(2, 0xff00ff, 1); // Magenta outline
+        graphics.fillStyle(0xff00ff, 0.3); // Magenta fill with transparency
+        graphics.fillCircle(needScreenX, needScreenY, 8); // 8 pixel radius
+        graphics.strokeCircle(needScreenX, needScreenY, 8);
+      } else if (pedestrian.state === 'going_to_destination' && pedestrian.destinationX !== undefined && pedestrian.destinationY !== undefined) {
         const destScreenPos = isoToScreen(pedestrian.destinationX, pedestrian.destinationY);
         const destScreenX = destScreenPos.x + gridOffsetX;
         const destScreenY = destScreenPos.y + gridOffsetY;
