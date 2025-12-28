@@ -381,6 +381,7 @@ export class PloppableManager {
     else if (ploppable.type === 'Flower Patch') emoji = '🌸';
     else if (ploppable.type === 'Street Light') emoji = '💡';
     else if (ploppable.type === 'Security Camera') emoji = '📹';
+    else if (ploppable.type === 'Portable Toilet') emoji = '🚽';
     
     // Handle non-oriented ploppables (Tree, Shrub, Flower Patch, Security Camera) - render at center, no arrow
     if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Security Camera') {

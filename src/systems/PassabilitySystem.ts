@@ -23,6 +23,7 @@ export class PassabilitySystem {
     'Flower Patch': true, // Flower patches are passable (decorations)
     'Street Light': true, // Street lights are passable
     'Security Camera': true, // Security cameras are passable
+    'Portable Toilet': false, // Portable toilets are impassable (block movement)
     'entrance': true, // Entrances are passable
     'exit': true, // Exits are passable
     'Pedestrian Spawner': true, // Spawners are passable

@@ -29,6 +29,7 @@ export class AppealSystem {
     'Flower Patch': { appealDelta: 1, radius: 1, shape: 'square' },
     'Dumpster': { appealDelta: -1, radius: 3, shape: 'circular', isTwoTile: true },
     'Trash Can': { appealDelta: -1, radius: 2, shape: 'circular' },
+    'Portable Toilet': { appealDelta: -1, radius: 2, shape: 'circular' },
   };
   
   private constructor() {}

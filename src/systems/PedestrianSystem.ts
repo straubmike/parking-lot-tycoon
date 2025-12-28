@@ -19,7 +19,7 @@ export class PedestrianSystem {
   private pathfindingSystem: PathfindingSystem;
   private gridManager: GridManager;
   private needGenerationProbability: number; // Probability (0-1) that a pedestrian will have a need
-  private needTypeDistribution: Record<'trash' | 'thirst', number>; // Distribution weights for each need type (must sum to 1.0)
+  private needTypeDistribution: Record<'trash' | 'thirst' | 'toilet', number>; // Distribution weights for each need type (must sum to 1.0)
 
   constructor(
     gridWidth: number,
@@ -37,7 +37,7 @@ export class PedestrianSystem {
     this.needGenerationProbability = needGenerationProbability;
     
     // Initialize need type distribution (default: 50% trash, 50% thirst)
-    this.needTypeDistribution = { trash: 0.5, thirst: 0.5 };
+    this.needTypeDistribution = { trash: 0.5, thirst: 0.5, toilet: 0 };
     
     // Initialize pathfinding system
     this.pathfindingSystem = new PathfindingSystem(
@@ -67,7 +67,7 @@ export class PedestrianSystem {
   /**
    * Generate a random need for a pedestrian based on probability and need type distribution
    */
-  private generateNeed(): 'trash' | 'thirst' | null {
+  private generateNeed(): 'trash' | 'thirst' | 'toilet' | null {
     // First check: should we generate a need at all?
     const randomValue = Math.random();
     if (randomValue >= this.needGenerationProbability) {
@@ -81,7 +81,7 @@ export class PedestrianSystem {
     for (const [needType, weight] of Object.entries(this.needTypeDistribution)) {
       cumulative += weight;
       if (randomNeedValue < cumulative) {
-        return needType as 'trash' | 'thirst';
+        return needType as 'trash' | 'thirst' | 'toilet';
       }
     }
     
@@ -93,7 +93,7 @@ export class PedestrianSystem {
    * Find a ploppable that fulfills the given need and is reachable from the start position
    */
   private findReachablePloppableForNeed(
-    needType: 'trash' | 'thirst',
+    needType: 'trash' | 'thirst' | 'toilet',
     startX: number,
     startY: number
   ): Ploppable | null {
@@ -310,7 +310,30 @@ export class PedestrianSystem {
       
       // Handle despawned state - count down respawn timer
       if (pedestrian.state === 'despawned') {
-        if (pedestrian.respawnTimer !== undefined) {
+        // Check if this is a toilet need despawn (using needFulfillmentTimer) or normal despawn (using respawnTimer)
+        if (pedestrian.needFulfillmentTimer !== undefined && pedestrian.currentNeed === 'toilet') {
+          // Toilet need: count down the toilet timer
+          pedestrian.needFulfillmentTimer -= delta;
+          
+          if (pedestrian.needFulfillmentTimer <= 0) {
+            // Time to respawn at front face of toilet
+            if (pedestrian.needTargetX !== undefined && pedestrian.needTargetY !== undefined) {
+              // Respawn at the front face position
+              pedestrian.x = pedestrian.needTargetX;
+              pedestrian.y = pedestrian.needTargetY;
+              const respawnScreenPos = isoToScreen(pedestrian.needTargetX, pedestrian.needTargetY);
+              pedestrian.screenX = respawnScreenPos.x;
+              pedestrian.screenY = respawnScreenPos.y;
+              
+              // Clear toilet need and continue to destination
+              this.completeNeedFulfillment(pedestrian);
+            } else {
+              // Fallback: complete need fulfillment normally
+              this.completeNeedFulfillment(pedestrian);
+            }
+          }
+        } else if (pedestrian.respawnTimer !== undefined) {
+          // Normal despawn (from destination): count down respawn timer
           pedestrian.respawnTimer -= delta;
           
           if (pedestrian.respawnTimer <= 0) {
@@ -551,7 +574,19 @@ export class PedestrianSystem {
           
           if (targetPloppable && NeedsSystem.hasReachedNeedTarget(pedestrian.x, pedestrian.y, targetPloppable)) {
             // Reached need target - fulfill need
-            if (NeedsSystem.needRequiresTimer(pedestrian.currentNeed!)) {
+            if (NeedsSystem.needRequiresDespawn(pedestrian.currentNeed!)) {
+              // Portable toilet: despawn, wait 2-10 seconds (real time), then respawn at front face
+              // Store the respawn location (front face position)
+              pedestrian.needTargetX = pedestrian.x;
+              pedestrian.needTargetY = pedestrian.y;
+              // Generate random wait time between 2-10 seconds (real time, which is 2-10 in-game minutes)
+              const waitTimeSeconds = 2 + Math.random() * 8; // 2 to 10 seconds
+              pedestrian.needFulfillmentTimer = waitTimeSeconds * 1000; // Convert to milliseconds
+              pedestrian.state = 'despawned';
+              // Clear path and position to make them invisible
+              pedestrian.path = [];
+              pedestrian.currentPathIndex = 0;
+            } else if (NeedsSystem.needRequiresTimer(pedestrian.currentNeed!)) {
               // Vending machine: stop movement and start timer (2 in-game minutes)
               const timeSystem = TimeSystem.getInstance();
               pedestrian.needFulfillmentStartTime = timeSystem.getTotalMinutes();
@@ -629,32 +664,34 @@ export class PedestrianSystem {
    * @param distribution Object with need types as keys and weights (0-1) as values
    * Weights will be normalized to sum to 1.0 automatically
    * Example: { trash: 0.5, thirst: 0.5 } for 50/50 split
-   * Example: { trash: 1.0, thirst: 0.0 } for 100% trash, 0% thirst
+   * Example: { trash: 0.25, thirst: 0.25, toilet: 0.5 } for 25/25/50 split
    */
-  setNeedTypeDistribution(distribution: Partial<Record<'trash' | 'thirst', number>>): void {
+  setNeedTypeDistribution(distribution: Partial<Record<'trash' | 'thirst' | 'toilet', number>>): void {
     // Get default values for any missing need types
     const trashWeight = distribution.trash ?? 0;
     const thirstWeight = distribution.thirst ?? 0;
+    const toiletWeight = distribution.toilet ?? 0;
     
     // Calculate total weight
-    const totalWeight = trashWeight + thirstWeight;
+    const totalWeight = trashWeight + thirstWeight + toiletWeight;
     
     // Normalize weights to sum to 1.0
     if (totalWeight > 0) {
       this.needTypeDistribution = {
         trash: trashWeight / totalWeight,
-        thirst: thirstWeight / totalWeight
+        thirst: thirstWeight / totalWeight,
+        toilet: toiletWeight / totalWeight
       };
     } else {
-      // If all weights are 0, default to 50/50
-      this.needTypeDistribution = { trash: 0.5, thirst: 0.5 };
+      // If all weights are 0, default to 50/50 trash/thirst
+      this.needTypeDistribution = { trash: 0.5, thirst: 0.5, toilet: 0 };
     }
   }
 
   /**
    * Get the current need type distribution
    */
-  getNeedTypeDistribution(): Record<'trash' | 'thirst', number> {
+  getNeedTypeDistribution(): Record<'trash' | 'thirst' | 'toilet', number> {
     return { ...this.needTypeDistribution };
   }
 }

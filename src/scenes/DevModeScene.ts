@@ -48,8 +48,8 @@ export class DevModeScene extends BaseGameplayScene {
     
     // Set need generation probability to 50%
     this.pedestrianSystem.setNeedGenerationProbability(0.5);
-    // Set need type distribution to 50% thirst, 50% trash
-    this.pedestrianSystem.setNeedTypeDistribution({ trash: 0.5, thirst: 0.5 });
+    // Set need type distribution to 25% trash, 25% thirst, 50% toilet
+    this.pedestrianSystem.setNeedTypeDistribution({ trash: 0.25, thirst: 0.25, toilet: 0.5 });
     
     // Set up keyboard controls
     this.setupKeyboardControls();
@@ -541,7 +541,7 @@ export class DevModeScene extends BaseGameplayScene {
       this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
       this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
       this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
-    } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
+    } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet') {
       // Draw preview for oriented ploppables
       // Get orientation type and size from button data
       const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
@@ -1004,6 +1004,7 @@ export class DevModeScene extends BaseGameplayScene {
               this.selectedPloppableType === 'Trash Can' || 
               this.selectedPloppableType === 'Vending Machine' ||
               this.selectedPloppableType === 'Dumpster' ||
+              this.selectedPloppableType === 'Portable Toilet' ||
               this.selectedPloppableType === 'Street Light') {
             description += '\n\nUse Q and E keys to rotate orientation.';
           }
@@ -1044,7 +1045,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Street Light') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light') {
         // Rotate counter-clockwise (Q): 0 -> 3 -> 2 -> 1 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
         // Update highlight if hovering over a cell
@@ -1065,7 +1066,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Street Light') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light') {
         // Rotate clockwise (E): 0 -> 1 -> 2 -> 3 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         // Update highlight if hovering over a cell

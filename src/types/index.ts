@@ -93,7 +93,7 @@ export interface Pedestrian {
   respawnTimer?: number; // Time remaining before respawn (milliseconds)
   respawnDuration?: number; // Total time to wait before respawn (milliseconds)
   // Need system fields
-  currentNeed?: 'trash' | 'thirst' | null; // Current need the pedestrian has
+  currentNeed?: 'trash' | 'thirst' | 'toilet' | null; // Current need the pedestrian has
   needTargetPloppableId?: string; // ID of the ploppable that fulfills this need
   needTargetX?: number; // Grid X where they need to go to fulfill the need
   needTargetY?: number; // Grid Y where they need to go to fulfill the need

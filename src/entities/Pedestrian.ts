@@ -18,7 +18,7 @@ export class PedestrianEntity implements Pedestrian {
   respawnTimer?: number;
   respawnDuration?: number;
   // Need system fields
-  currentNeed?: 'trash' | 'thirst' | null;
+  currentNeed?: 'trash' | 'thirst' | 'toilet' | null;
   needTargetPloppableId?: string;
   needTargetX?: number;
   needTargetY?: number;

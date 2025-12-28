@@ -10,11 +10,13 @@ export class NeedsSystem {
   /**
    * Get the need type that a ploppable fulfills, if any
    */
-  static getPloppableNeedType(ploppable: Ploppable): 'trash' | 'thirst' | null {
+  static getPloppableNeedType(ploppable: Ploppable): 'trash' | 'thirst' | 'toilet' | null {
     if (ploppable.type === 'Trash Can' || ploppable.type === 'Dumpster') {
       return 'trash';
     } else if (ploppable.type === 'Vending Machine') {
       return 'thirst';
+    } else if (ploppable.type === 'Portable Toilet') {
+      return 'toilet';
     }
     return null;
   }
@@ -24,7 +26,7 @@ export class NeedsSystem {
    * For 2-tile ploppables, only includes them once (from the primary cell)
    */
   static getPloppablesForNeed(
-    needType: 'trash' | 'thirst',
+    needType: 'trash' | 'thirst' | 'toilet',
     gridManager: GridManager,
     gridWidth: number,
     gridHeight: number
@@ -153,8 +155,15 @@ export class NeedsSystem {
   /**
    * Check if a need requires a timer (e.g., vending machine)
    */
-  static needRequiresTimer(needType: 'trash' | 'thirst'): boolean {
+  static needRequiresTimer(needType: 'trash' | 'thirst' | 'toilet'): boolean {
     return needType === 'thirst'; // Vending machine requires a 2-minute timer
+  }
+
+  /**
+   * Check if a need requires despawn/respawn (e.g., portable toilet)
+   */
+  static needRequiresDespawn(needType: 'trash' | 'thirst' | 'toilet'): boolean {
+    return needType === 'toilet'; // Portable toilet requires despawn/respawn
   }
 
   /**

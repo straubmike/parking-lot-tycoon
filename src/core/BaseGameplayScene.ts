@@ -86,6 +86,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    * Center the grid in the viewport
    */
   protected centerGrid(): void {
+    // Reset camera scroll to ensure it's at (0, 0) before calculating offsets
+    this.cameras.main.setScroll(0, 0);
+    
     // Calculate the center tile position in grid coordinates
     const centerGridX = (this.gridWidth - 1) / 2;
     const centerGridY = (this.gridHeight - 1) / 2;
@@ -94,9 +97,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     const centerScreenX = (centerGridX - centerGridY) * (TILE_WIDTH / 2);
     const centerScreenY = (centerGridX + centerGridY) * (TILE_HEIGHT / 2);
     
-    // Get camera center (viewport center)
-    const cameraCenterX = this.cameras.main.centerX;
-    const cameraCenterY = this.cameras.main.centerY;
+    // Use game width/height directly instead of camera center (more reliable during hot-reload)
+    const cameraCenterX = this.scale.width / 2;
+    const cameraCenterY = this.scale.height / 2;
     
     // Calculate offset to center the grid
     this.gridOffsetX = cameraCenterX - centerScreenX;
