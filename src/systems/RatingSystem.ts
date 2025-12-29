@@ -1,7 +1,7 @@
 import { TimeSystem } from './TimeSystem';
 import { GridManager } from '@/core/GridManager';
 import { AppealSystem } from './AppealSystem';
-import { SecuritySystem } from './SecuritySystem';
+import { SafetySystem } from './SafetySystem';
 
 /**
  * RatingSystem - Singleton that manages lot ratings based on parker satisfaction
@@ -173,8 +173,8 @@ export class RatingSystem {
   }
   
   /**
-   * Get composite rating including appeal and security components
-   * Formula: 70% parker satisfaction + 15% appeal + 15% security
+   * Get composite rating including appeal and safety components
+   * Formula: 70% parker satisfaction + 15% appeal + 15% safety
    * 
    * @param gridManager - Grid manager instance
    * @param gridWidth - Grid width
@@ -184,9 +184,9 @@ export class RatingSystem {
   getCompositeRating(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
     const parkerRating = this.currentRating; // 0-100
     const appealContribution = AppealSystem.getInstance().getAppealContribution(gridManager, gridWidth, gridHeight);
-    const securityContribution = SecuritySystem.getInstance().getSecurityContribution(gridManager, gridWidth, gridHeight);
+    const safetyContribution = SafetySystem.getInstance().getSafetyContribution(gridManager, gridWidth, gridHeight);
     
-    return (parkerRating * 0.70) + appealContribution + securityContribution;
+    return (parkerRating * 0.70) + appealContribution + safetyContribution;
   }
   
   /**
@@ -195,20 +195,20 @@ export class RatingSystem {
    * @param gridManager - Grid manager instance
    * @param gridWidth - Grid width
    * @param gridHeight - Grid height
-   * @returns Object with parker, appeal, security, and total ratings
+   * @returns Object with parker, appeal, safety, and total ratings
    */
   getComponentRatings(gridManager: GridManager, gridWidth: number, gridHeight: number): {
     parker: number;
     appeal: number;
-    security: number;
+    safety: number;
     total: number;
   } {
     const parker = this.currentRating;
     const appeal = AppealSystem.getInstance().getAppealContribution(gridManager, gridWidth, gridHeight);
-    const security = SecuritySystem.getInstance().getSecurityContribution(gridManager, gridWidth, gridHeight);
-    const total = (parker * 0.70) + appeal + security;
+    const safety = SafetySystem.getInstance().getSafetyContribution(gridManager, gridWidth, gridHeight);
+    const total = (parker * 0.70) + appeal + safety;
     
-    return { parker, appeal, security, total };
+    return { parker, appeal, safety, total };
   }
   
   /**

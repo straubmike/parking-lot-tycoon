@@ -3,56 +3,55 @@ import { Ploppable, CellData } from '@/types';
 import { PloppableManager } from './PloppableManager';
 
 /**
- * SecuritySystem - Singleton that manages cell security values
+ * SafetySystem - Singleton that manages cell safety values
  * 
- * Tracks security values per cell and calculates area-of-effect (AoE) when ploppables are placed/removed.
- * Security contributes 15 points to the overall lot rating if average security > 0, otherwise 0.
- * Currently no ploppables affect security, but the system is prepared for future security ploppables.
+ * Tracks safety values per cell and calculates area-of-effect (AoE) when ploppables are placed/removed.
+ * Safety contributes 15 points to the overall lot rating if average safety > 0, otherwise 0.
  */
-export class SecuritySystem {
-  private static instance: SecuritySystem;
+export class SafetySystem {
+  private static instance: SafetySystem;
   
   /**
    * Ploppable AoE configuration
-   * securityDelta: change in security value (+1 or -1, but currently all are positive or 0)
+   * safetyDelta: change in safety value (+1 or -1, but currently all are positive or 0)
    * radius: radius in cells
    * shape: 'circular' (isometric distance) or 'square' (Chebyshev distance)
    * isTwoTile: true if ploppable spans 2 cells
    */
   private readonly ploppableConfigs: Record<string, {
-    securityDelta: number;
+    safetyDelta: number;
     radius: number;
     shape: 'circular' | 'square';
     isTwoTile?: boolean;
   }> = {
-    'Street Light': { securityDelta: 1, radius: 2, shape: 'circular' },
-    'Security Camera': { securityDelta: 1, radius: 8, shape: 'circular' },
-    'Speed Bump': { securityDelta: 1, radius: 1, shape: 'circular' },
-    'Crosswalk': { securityDelta: 1, radius: 1, shape: 'circular' },
+    'Street Light': { safetyDelta: 1, radius: 2, shape: 'circular' },
+    'Security Camera': { safetyDelta: 1, radius: 8, shape: 'circular' },
+    'Speed Bump': { safetyDelta: 1, radius: 1, shape: 'circular' },
+    'Crosswalk': { safetyDelta: 1, radius: 1, shape: 'circular' },
   };
   
   private constructor() {}
   
-  static getInstance(): SecuritySystem {
-    if (!SecuritySystem.instance) {
-      SecuritySystem.instance = new SecuritySystem();
+  static getInstance(): SafetySystem {
+    if (!SafetySystem.instance) {
+      SafetySystem.instance = new SafetySystem();
     }
-    return SecuritySystem.instance;
+    return SafetySystem.instance;
   }
   
   /**
-   * Update security value for a specific cell
+   * Update safety value for a specific cell
    * @param gridManager - Grid manager instance
    * @param x - Cell X coordinate
    * @param y - Cell Y coordinate
-   * @param delta - Change in security value (can be positive or negative)
+   * @param delta - Change in safety value (can be positive or negative)
    */
-  updateCellSecurity(gridManager: GridManager, x: number, y: number, delta: number): void {
+  updateCellSafety(gridManager: GridManager, x: number, y: number, delta: number): void {
     const cellData = gridManager.getCellData(x, y);
-    const currentSecurity = cellData?.security ?? 0;
-    const newSecurity = currentSecurity + delta;
+    const currentSafety = cellData?.safety ?? 0;
+    const newSafety = currentSafety + delta;
     
-    gridManager.setCellData(x, y, { security: newSecurity });
+    gridManager.setCellData(x, y, { safety: newSafety });
   }
   
   /**
@@ -112,10 +111,10 @@ export class SecuritySystem {
   ): void {
     const config = this.ploppableConfigs[ploppable.type];
     if (!config) {
-      return; // Ploppable doesn't affect security
+      return; // Ploppable doesn't affect safety
     }
     
-    const delta = isRemoval ? -config.securityDelta : config.securityDelta;
+    const delta = isRemoval ? -config.safetyDelta : config.safetyDelta;
     
     // Get all cells that should be affected
     const affectedCells: { x: number; y: number }[] = [];
@@ -163,49 +162,49 @@ export class SecuritySystem {
       }
     }
     
-    // Update security for all affected cells
+    // Update safety for all affected cells
     for (const cell of affectedCells) {
-      this.updateCellSecurity(gridManager, cell.x, cell.y, delta);
+      this.updateCellSafety(gridManager, cell.x, cell.y, delta);
     }
   }
   
   /**
-   * Get average security across all cells
+   * Get average safety across all cells
    */
-  getAverageSecurity(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
-    let totalSecurity = 0;
+  getAverageSafety(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
+    let totalSafety = 0;
     let cellCount = 0;
     
     for (let y = 0; y < gridHeight; y++) {
       for (let x = 0; x < gridWidth; x++) {
         const cellData = gridManager.getCellData(x, y);
-        const security = cellData?.security ?? 0;
-        totalSecurity += security;
+        const safety = cellData?.safety ?? 0;
+        totalSafety += safety;
         cellCount++;
       }
     }
     
-    return cellCount > 0 ? totalSecurity / cellCount : 0;
+    return cellCount > 0 ? totalSafety / cellCount : 0;
   }
   
   /**
-   * Get security contribution to rating (0-15 points)
+   * Get safety contribution to rating (0-15 points)
    * Calculation:
-   * 1. Each cell with positive security = 1, 0 or negative = 0 (boolean conversion)
+   * 1. Each cell with positive safety = 1, 0 or negative = 0 (boolean conversion)
    * 2. Sum all boolean values
-   * 3. Divide by total number of cells (percentage of cells with positive security)
+   * 3. Divide by total number of cells (percentage of cells with positive safety)
    * 4. Multiply by 15
    */
-  getSecurityContribution(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
+  getSafetyContribution(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
     let positiveCellCount = 0;
     let totalCells = 0;
     
     for (let y = 0; y < gridHeight; y++) {
       for (let x = 0; x < gridWidth; x++) {
         const cellData = gridManager.getCellData(x, y);
-        const security = cellData?.security ?? 0;
-        // Positive security = 1, 0 or negative = 0
-        if (security > 0) {
+        const safety = cellData?.safety ?? 0;
+        // Positive safety = 1, 0 or negative = 0
+        if (safety > 0) {
           positiveCellCount++;
         }
         totalCells++;
@@ -222,12 +221,12 @@ export class SecuritySystem {
   }
   
   /**
-   * Reset all security values to 0
+   * Reset all safety values to 0
    */
   reset(gridManager: GridManager, gridWidth: number, gridHeight: number): void {
     for (let y = 0; y < gridHeight; y++) {
       for (let x = 0; x < gridWidth; x++) {
-        gridManager.setCellData(x, y, { security: 0 });
+        gridManager.setCellData(x, y, { safety: 0 });
       }
     }
   }

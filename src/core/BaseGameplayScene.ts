@@ -265,7 +265,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       const currentDay = GameSystems.time.getCurrentDay();
       const previous = currentDay === 0 ? null : GameSystems.rating.getPreviousDayRating();
       const previousDisplay = previous === null ? 'n/a' : previous.toFixed(1);
-      ratingEl.textContent = `${components.total.toFixed(1)} : ${previousDisplay} (Parker: ${components.parker.toFixed(1)}, Appeal: ${components.appeal.toFixed(0)}, Security: ${components.security.toFixed(0)})`;
+      ratingEl.textContent = `${components.total.toFixed(1)} : ${previousDisplay} (Parker: ${components.parker.toFixed(1)}, Appeal: ${components.appeal.toFixed(0)}, Safety: ${components.safety.toFixed(0)})`;
     }
   }
 

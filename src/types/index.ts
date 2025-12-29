@@ -134,9 +134,9 @@ export interface CellData {
   canEast?: boolean;   // Can travel east (to x+1, increasing X)
   canWest?: boolean;   // Can travel west (to x-1, decreasing X)
   
-  // Appeal and security values (initialized to 0)
+  // Appeal and safety values (initialized to 0)
   appeal?: number;  // Cell appeal value (affected by ploppables with AoE)
-  security?: number;  // Cell security value (affected by ploppables with AoE)
+  safety?: number;  // Cell safety value (affected by ploppables with AoE)
   
   // Surface behavior properties
   behavesLikeSidewalk?: boolean;  // If true, cell behaves like concrete sidewalk for pedestrian pathfinding (used by Crosswalk)

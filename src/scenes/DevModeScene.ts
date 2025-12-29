@@ -7,7 +7,7 @@ import { PloppableManager } from '@/systems/PloppableManager';
 import { SpawnerManager } from '@/managers/SpawnerManager';
 import { GridInteractionHandler } from '@/systems/GridInteractionHandler';
 import { GridManager } from '@/core/GridManager';
-import { SecuritySystem } from '@/systems/SecuritySystem';
+import { SafetySystem } from '@/systems/SafetySystem';
 
 export class DevModeScene extends BaseGameplayScene {
   // Dev mode specific state
@@ -35,8 +35,8 @@ export class DevModeScene extends BaseGameplayScene {
   private isDemolishMode: boolean = false; // Demolish mode for removing ploppables
   private pendingSpawnerCell: { x: number; y: number } | null = null; // Cell where spawner was placed, waiting for despawner
   private showAppealVisualization: boolean = false; // Show appeal visualization overlay
-  private showSecurityVisualization: boolean = false; // Show security visualization overlay
-  private visualizationGraphics!: Phaser.GameObjects.Graphics; // Separate graphics for appeal/security visualization
+  private showSafetyVisualization: boolean = false; // Show safety visualization overlay
+  private visualizationGraphics!: Phaser.GameObjects.Graphics; // Separate graphics for appeal/safety visualization
 
   constructor() {
     super({ key: 'DevModeScene' }, 10, 10); // gridWidth = 10, gridHeight = 10
@@ -75,9 +75,9 @@ export class DevModeScene extends BaseGameplayScene {
     // Set up grid resize controls
     this.setupGridResizeControls();
     
-    // Set up appeal and security visualization buttons
+    // Set up appeal and safety visualization buttons
     this.setupAppealVisualizationButton();
-    this.setupSecurityVisualizationButton();
+    this.setupSafetyVisualizationButton();
   }
 
   // Grid rendering methods removed - now in BaseGameplayScene.render() and GridRenderer
@@ -114,7 +114,7 @@ export class DevModeScene extends BaseGameplayScene {
   }
 
   /**
-   * Override render to add appeal/security visualization
+   * Override render to add appeal/safety visualization
    * The visualization should be rendered AFTER the grid so it overlays properly
    */
   protected render(): void {
@@ -124,9 +124,9 @@ export class DevModeScene extends BaseGameplayScene {
     
     // Only render visualization if one of the modes is explicitly active
     // Double-check flags to ensure we don't render when not needed
-    const shouldRender = this.showAppealVisualization || this.showSecurityVisualization;
+    const shouldRender = this.showAppealVisualization || this.showSafetyVisualization;
     if (shouldRender) {
-      this.renderAppealSecurityVisualization();
+      this.renderAppealSafetyVisualization();
     } else {
       // When not active, ensure visualization graphics is cleared and hidden
       if (this.visualizationGraphics) {
@@ -139,11 +139,11 @@ export class DevModeScene extends BaseGameplayScene {
   }
 
   /**
-   * Render appeal or security visualization overlay
+   * Render appeal or safety visualization overlay
    */
-  private renderAppealSecurityVisualization(): void {
+  private renderAppealSafetyVisualization(): void {
     // Safety check - should not be called if both are inactive, but check anyway
-    if (!this.showAppealVisualization && !this.showSecurityVisualization) {
+    if (!this.showAppealVisualization && !this.showSafetyVisualization) {
       if (this.visualizationGraphics) {
         this.visualizationGraphics.clear();
         this.visualizationGraphics.setVisible(false);
@@ -169,7 +169,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.showAppealVisualization) {
           value = cellData?.appeal ?? 0;
         } else {
-          value = cellData?.security ?? 0;
+          value = cellData?.safety ?? 0;
         }
         
         // Convert to boolean: positive = 1 (green), 0 or negative = 0 (red)
@@ -339,13 +339,13 @@ export class DevModeScene extends BaseGameplayScene {
       const passableAttr = button?.getAttribute('data-passable');
       const passable = passableAttr === 'true';
       
-      // Special handling for Security Camera: replace Street Light's security AoE
+      // Special handling for Security Camera: replace Street Light's safety AoE
       if (this.selectedPloppableType === 'Security Camera') {
         const cellData = this.gridManager.getCellData(gridX, gridY);
         const streetLight = cellData?.ploppable;
         if (streetLight && streetLight.type === 'Street Light') {
-          // Remove Street Light's security AoE (2 radius)
-          SecuritySystem.getInstance().applyPloppableAoE(streetLight, this.gridManager, this.gridWidth, this.gridHeight, true);
+          // Remove Street Light's safety AoE (2 radius)
+          SafetySystem.getInstance().applyPloppableAoE(streetLight, this.gridManager, this.gridWidth, this.gridHeight, true);
           
           // Create Security Camera ploppable
           const securityCamera: Ploppable = {
@@ -362,8 +362,8 @@ export class DevModeScene extends BaseGameplayScene {
           // Replace Street Light with Security Camera in cell data
           this.gridManager.setCellData(gridX, gridY, { ploppable: securityCamera });
           
-          // Apply Security Camera's security AoE (8 radius)
-          SecuritySystem.getInstance().applyPloppableAoE(securityCamera, this.gridManager, this.gridWidth, this.gridHeight, false);
+          // Apply Security Camera's safety AoE (8 radius)
+          SafetySystem.getInstance().applyPloppableAoE(securityCamera, this.gridManager, this.gridWidth, this.gridHeight, false);
           
           // Redraw grid
           this.redrawGrid();
@@ -973,11 +973,13 @@ export class DevModeScene extends BaseGameplayScene {
     const colorPreview = document.getElementById('selection-color-preview');
     const selectionName = document.getElementById('selection-name');
     const selectionDescription = document.getElementById('selection-description');
+    const selectionInstructions = document.getElementById('selection-instructions');
 
     if (this.isVehicleSpawnerMode) {
       // Show vehicle spawner info
-      if (selectionInfo && colorPreview && selectionName && selectionDescription) {
+      if (selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
         colorPreview.style.display = 'none';
+        selectionInstructions.style.display = 'none';
         if (this.pendingSpawnerCell) {
           selectionName.textContent = 'Vehicle Despawner';
           selectionDescription.textContent = 'Click a different cell to place the vehicle despawner (🎯).';
@@ -989,21 +991,23 @@ export class DevModeScene extends BaseGameplayScene {
       }
     } else if (this.isDemolishMode) {
       // Show demolish mode info
-      if (selectionInfo && colorPreview && selectionName && selectionDescription) {
+      if (selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
         colorPreview.style.display = 'none';
+        selectionInstructions.style.display = 'none';
         selectionName.textContent = 'Demolish Tool';
-        selectionDescription.textContent = 'Click on any ploppable, vehicle spawner, or pedestrian spawner to remove it. Multi-part ploppables (like spawner/despawner pairs) will be fully removed.';
+        selectionDescription.textContent = 'Click on any ploppable to to remove it. No refunds.';
         selectionInfo.style.display = 'block';
       }
     } else if (this.selectedPloppableType) {
       // Show ploppable info
-      if (selectionInfo && colorPreview && selectionName && selectionDescription) {
+      if (selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
         // Hide color preview for ploppables
         colorPreview.style.display = 'none';
         selectionName.textContent = this.selectedPloppableType;
         
-        // Build description with orientation info
+        // Build description
         let description = '';
+        let instructions = '';
         if (this.selectedPloppableType === 'Pedestrian Spawner') {
           description = 'Click a cell to place a pedestrian spawner (🚶). Pedestrians will spawn here and wander randomly on the pedestrian rail grid.';
         } else {
@@ -1011,6 +1015,7 @@ export class DevModeScene extends BaseGameplayScene {
           if (button) {
             description = button.getAttribute('data-description') || '';
           }
+          // Check if this ploppable uses rotation (Q/E keys)
           if (this.selectedPloppableType === 'Parking Spot' || 
               this.selectedPloppableType === 'Trash Can' || 
               this.selectedPloppableType === 'Vending Machine' ||
@@ -1020,13 +1025,19 @@ export class DevModeScene extends BaseGameplayScene {
               this.selectedPloppableType === 'Bench' ||
               this.selectedPloppableType === 'Speed Bump' ||
               this.selectedPloppableType === 'Crosswalk') {
-            description += '\n\nUse Q and E keys to rotate orientation.';
+            instructions = 'Use Q and E keys to rotate orientation.';
           }
           if (this.selectedPloppableType === 'Security Camera') {
-            description += '\n\nNote: Security cameras can only be placed on cells that already contain a Street Light.';
+            instructions = 'Can only be placed on cells that already contain a Street Light.';
           }
         }
         selectionDescription.textContent = description;
+        if (instructions) {
+          selectionInstructions.textContent = instructions;
+          selectionInstructions.style.display = 'block';
+        } else {
+          selectionInstructions.style.display = 'none';
+        }
         
         selectionInfo.style.display = 'block';
       }
@@ -1357,11 +1368,11 @@ export class DevModeScene extends BaseGameplayScene {
    */
   private clearVisualizationModes(): void {
     this.showAppealVisualization = false;
-    this.showSecurityVisualization = false;
+    this.showSafetyVisualization = false;
     const appealButton = document.getElementById('appeal-visualization-button');
-    const securityButton = document.getElementById('security-visualization-button');
+    const safetyButton = document.getElementById('safety-visualization-button');
     if (appealButton) appealButton.classList.remove('selected');
-    if (securityButton) securityButton.classList.remove('selected');
+    if (safetyButton) safetyButton.classList.remove('selected');
   }
 
   private setupAppealVisualizationButton(): void {
@@ -1373,12 +1384,12 @@ export class DevModeScene extends BaseGameplayScene {
           // Toggle appeal visualization
           this.showAppealVisualization = !this.showAppealVisualization;
           
-          // If enabling appeal, disable security (mutually exclusive)
+          // If enabling appeal, disable safety (mutually exclusive)
           if (this.showAppealVisualization) {
-            this.showSecurityVisualization = false;
-            const securityButton = document.getElementById('security-visualization-button');
-            if (securityButton) {
-              securityButton.classList.remove('selected');
+            this.showSafetyVisualization = false;
+            const safetyButton = document.getElementById('safety-visualization-button');
+            if (safetyButton) {
+              safetyButton.classList.remove('selected');
             }
             appealButton.classList.add('selected');
           } else {
@@ -1392,25 +1403,25 @@ export class DevModeScene extends BaseGameplayScene {
     });
   }
 
-  private setupSecurityVisualizationButton(): void {
+  private setupSafetyVisualizationButton(): void {
     this.time.delayedCall(100, () => {
-      const securityButton = document.getElementById('security-visualization-button');
+      const safetyButton = document.getElementById('safety-visualization-button');
       
-      if (securityButton) {
-        securityButton.addEventListener('click', () => {
-          // Toggle security visualization
-          this.showSecurityVisualization = !this.showSecurityVisualization;
+      if (safetyButton) {
+        safetyButton.addEventListener('click', () => {
+          // Toggle safety visualization
+          this.showSafetyVisualization = !this.showSafetyVisualization;
           
-          // If enabling security, disable appeal (mutually exclusive)
-          if (this.showSecurityVisualization) {
+          // If enabling safety, disable appeal (mutually exclusive)
+          if (this.showSafetyVisualization) {
             this.showAppealVisualization = false;
             const appealButton = document.getElementById('appeal-visualization-button');
             if (appealButton) {
               appealButton.classList.remove('selected');
             }
-            securityButton.classList.add('selected');
+            safetyButton.classList.add('selected');
           } else {
-            securityButton.classList.remove('selected');
+            safetyButton.classList.remove('selected');
           }
           
           // Redraw to show/hide visualization
@@ -1448,7 +1459,7 @@ export class DevModeScene extends BaseGameplayScene {
       
       // Special handling for Security Camera: restore Street Light when removed
       if (ploppableType === 'Security Camera') {
-        // Remove Security Camera's security AoE (8 radius)
+        // Remove Security Camera's safety AoE (8 radius)
         PloppableManager.removePloppable(gridX, gridY, this.gridManager, this.gridWidth, this.gridHeight);
         
         // Restore Street Light with default orientation

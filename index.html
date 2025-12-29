@@ -50,18 +50,22 @@
             width: 250px;
             height: 100%;
             padding: 20px;
-            overflow-y: auto;
+            box-sizing: border-box;
             z-index: 10;
         }
         
         #left-panel {
             left: 0;
             border-right: 2px solid #3a3a3a;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scrollbar-gutter: stable;
         }
         
         #right-panel {
             right: 0;
             border-left: 2px solid #3a3a3a;
+            overflow: hidden;
         }
         
         .button-container {
@@ -261,18 +265,18 @@
             <div class="section-title">Ploppables</div>
             <div class="ploppables-container">
                 <button class="ploppable-button" data-name="Parking Spot" data-description="Every lot needs one, right?">🅿️</button>
-                <button class="ploppable-button" data-name="Trash Can" data-description="A small trash can. Passable by pedestrians and vehicles. Use Q/E to change position along cell borders." data-orientation-type="A" data-passable="true">🗑️</button>
-                <button class="ploppable-button" data-name="Vending Machine" data-description="Dispenses refreshments. Impassable. Use Q/E to rotate and change which way the front faces." data-orientation-type="B" data-passable="false">🥤</button>
-                <button class="ploppable-button" data-name="Dumpster" data-description="A large trash receptacle that can be used like a trash can for pedestrians, but is also a requirement for some challenges. Dumpsters negatively impact lot appeal. Impassable. Use Q/E to rotate and change which way the front faces." data-orientation-type="B" data-passable="false" data-size="2">🗄️</button>
+                <button class="ploppable-button" data-name="Trash Can" data-description="Unsightly but better than having litter." data-orientation-type="A" data-passable="true">🗑️</button>
+                <button class="ploppable-button" data-name="Vending Machine" data-description="Dispenses refreshments." data-orientation-type="B" data-passable="false">🥤</button>
+                <button class="ploppable-button" data-name="Dumpster" data-description="A large container for trash required by some businesses." data-orientation-type="B" data-passable="false" data-size="2">🗄️</button>
                 <button class="ploppable-button" data-name="Tree" data-description="Trees are decorative barriers that increase lot appeal." data-passable="false">🌳</button>
                 <button class="ploppable-button" data-name="Shrub" data-description="Shrubs are decorative barriers that increase lot appeal." data-passable="false">🌿</button>
                 <button class="ploppable-button" data-name="Flower Patch" data-description="Flowers are decorations that increase lot appeal." data-passable="true">🌸</button>
-                <button class="ploppable-button" data-name="Street Light" data-description="Street lights brighten your lot increasing security rating. Security coverage can be expanded by adding cameras." data-orientation-type="A" data-passable="true">💡</button>
-                <button class="ploppable-button" data-name="Security Camera" data-description="Security cameras hung from street lights greatly expand their contribution to your lot's security rating." data-passable="true">📹</button>
-                <button class="ploppable-button" data-name="Portable Toilet" data-description="When you gotta go, you gotta go. Impassable. Use Q/E to rotate and change which way the front faces." data-orientation-type="B" data-passable="false">🚽</button>
-                <button class="ploppable-button" data-name="Bench" data-description="People tend not to sit around in parking lots, but benches are still nice to have." data-orientation-type="A" data-passable="true" data-pedestrian-only="true">🪑</button>
+                <button class="ploppable-button" data-name="Street Light" data-description="Brighten the lot making it safer." data-orientation-type="A" data-passable="true">💡</button>
+                <button class="ploppable-button" data-name="Security Camera" data-description="Hang from street lights to greater improve lot safety." data-passable="true">📹</button>
+                <button class="ploppable-button" data-name="Portable Toilet" data-description="When you gotta go, you gotta go." data-orientation-type="B" data-passable="false">🚽</button>
+                <button class="ploppable-button" data-name="Bench" data-description="Why don't you have a seat right over there?" data-orientation-type="A" data-passable="true" data-pedestrian-only="true">🪑</button>
                 <button class="ploppable-button" data-name="Speed Bump" data-description="Speed Bumps slow down traffic making the lot safer." data-orientation-type="B" data-passable="true" data-no-arrow="true">⛰️</button>
-                <button class="ploppable-button" data-name="Crosswalk" data-description="Crosswalks can be painted on asphalt and slightly boost lot security. They are treated like sidewalks by pedestians while retaining the vehicle favorability of the underlying asphalt." data-orientation-type="B" data-passable="true" data-no-arrow="true">🚸</button>
+                <button class="ploppable-button" data-name="Crosswalk" data-description="Benefits pedestrian pathing while keeping vehicle asphalt favorability." data-orientation-type="B" data-passable="true" data-no-arrow="true">🚸</button>
             </div>
             
             <div class="section-title">Tools</div>
@@ -281,7 +285,7 @@
             <button id="pedestrian-spawner-button" class="action-button">🚶 Pedestrian De/Respawner</button>
             <button id="permanent-button" class="action-button">Mark Permanent</button>
             <button id="appeal-visualization-button" class="action-button">Appeal</button>
-            <button id="security-visualization-button" class="action-button">Security</button>
+            <button id="safety-visualization-button" class="action-button">Safety</button>
             
             <div class="section-title" style="margin-top: 20px;">Grid Size</div>
             <div style="display: flex; gap: 5px; margin-bottom: 10px;">
@@ -308,6 +312,7 @@
                 <div id="selection-color-preview" style="width: 100%; height: 60px; border: 2px solid #555; border-radius: 4px; margin-bottom: 15px;"></div>
                 <div id="selection-name" style="color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 10px;"></div>
                 <div id="selection-description" style="color: #ccc; font-size: 14px; line-height: 1.5;"></div>
+                <div id="selection-instructions" style="color: #999; font-size: 12px; font-style: italic; margin-top: 8px; display: none;"></div>
             </div>
         </div>
     </div>

@@ -2,7 +2,7 @@ import { TimeSystem } from '@/systems/TimeSystem';
 import { RatingSystem } from '@/systems/RatingSystem';
 import { EconomySystem } from '@/systems/EconomySystem';
 import { AppealSystem } from '@/systems/AppealSystem';
-import { SecuritySystem } from '@/systems/SecuritySystem';
+import { SafetySystem } from '@/systems/SafetySystem';
 import { GridManager } from './GridManager';
 
 /**
@@ -41,10 +41,10 @@ export class GameSystems {
   }
   
   /**
-   * Access the SecuritySystem singleton
+   * Access the SafetySystem singleton
    */
-  static get security(): SecuritySystem {
-    return SecuritySystem.getInstance();
+  static get safety(): SafetySystem {
+    return SafetySystem.getInstance();
   }
   
   /**
@@ -52,7 +52,7 @@ export class GameSystems {
    * Call this when starting a new challenge or entering dev mode
    * 
    * @param initialBudget - Starting money for the challenge
-   * @param gridManager - Grid manager instance (optional, for resetting appeal/security)
+   * @param gridManager - Grid manager instance (optional, for resetting appeal/safety)
    * @param gridWidth - Grid width (optional)
    * @param gridHeight - Grid height (optional)
    */
@@ -62,7 +62,7 @@ export class GameSystems {
     this.economy.reset(initialBudget);
     if (gridManager && gridWidth !== undefined && gridHeight !== undefined) {
       this.appeal.reset(gridManager, gridWidth, gridHeight);
-      this.security.reset(gridManager, gridWidth, gridHeight);
+      this.safety.reset(gridManager, gridWidth, gridHeight);
     }
   }
   

@@ -4,7 +4,7 @@ import { GridManager } from '@/core/GridManager';
 import { Ploppable, CellData } from '@/types';
 import { PassabilitySystem } from './PassabilitySystem';
 import { AppealSystem } from './AppealSystem';
-import { SecuritySystem } from './SecuritySystem';
+import { SafetySystem } from './SafetySystem';
 
 /**
  * PloppableManager - Manages ploppable placement, removal, and rendering
@@ -275,9 +275,9 @@ export class PloppableManager {
       }
     }
     
-    // Apply AoE effects from appeal and security systems
+    // Apply AoE effects from appeal and safety systems
     AppealSystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, false);
-    SecuritySystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, false);
+    SafetySystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, false);
     
     return true;
   }
@@ -329,9 +329,9 @@ export class PloppableManager {
       }
     }
     
-    // Remove AoE effects from appeal and security systems before removing the ploppable
+    // Remove AoE effects from appeal and safety systems before removing the ploppable
     AppealSystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, true);
-    SecuritySystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, true);
+    SafetySystem.getInstance().applyPloppableAoE(ploppable, gridManager, width, height, true);
     
     // Remove from primary cell
     gridManager.setCellData(gridX, gridY, { ploppable: undefined as any });
