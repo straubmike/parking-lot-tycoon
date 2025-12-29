@@ -138,6 +138,9 @@ export interface CellData {
   appeal?: number;  // Cell appeal value (affected by ploppables with AoE)
   security?: number;  // Cell security value (affected by ploppables with AoE)
   
+  // Surface behavior properties
+  behavesLikeSidewalk?: boolean;  // If true, cell behaves like concrete sidewalk for pedestrian pathfinding (used by Crosswalk)
+  
   // Additional properties can be added here as needed
   // e.g., terrain type, elevation, ownership, etc.
 }

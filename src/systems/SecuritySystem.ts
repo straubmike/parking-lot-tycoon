@@ -27,6 +27,8 @@ export class SecuritySystem {
   }> = {
     'Street Light': { securityDelta: 1, radius: 2, shape: 'circular' },
     'Security Camera': { securityDelta: 1, radius: 8, shape: 'circular' },
+    'Speed Bump': { securityDelta: 1, radius: 1, shape: 'circular' },
+    'Crosswalk': { securityDelta: 1, radius: 1, shape: 'circular' },
   };
   
   private constructor() {}

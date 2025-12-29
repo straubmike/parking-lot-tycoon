@@ -389,6 +389,12 @@ export class DevModeScene extends BaseGameplayScene {
       // Store in cell data using PloppableManager
       PloppableManager.placePloppable(gridX, gridY, ploppable, this.gridManager, this.gridWidth, this.gridHeight);
       
+      // Special handling for Crosswalk: set behavesLikeSidewalk property
+      if (this.selectedPloppableType === 'Crosswalk') {
+        const cellData = this.gridManager.getCellData(gridX, gridY);
+        this.gridManager.setCellData(gridX, gridY, { ...cellData, behavesLikeSidewalk: true });
+      }
+      
       // If this is a pedestrian spawner, register it with the pedestrian system
       if (this.selectedPloppableType === 'Pedestrian Spawner') {
         SpawnerManager.addPedestrianSpawner(gridX, gridY, this.gridManager, this.pedestrianSystem);
@@ -541,13 +547,14 @@ export class DevModeScene extends BaseGameplayScene {
       this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
       this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
       this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
-    } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet') {
+    } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Bench' || this.selectedPloppableType === 'Speed Bump' || this.selectedPloppableType === 'Crosswalk') {
       // Draw preview for oriented ploppables
       // Get orientation type and size from button data
       const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
       const orientationType = button?.getAttribute('data-orientation-type') || 'B';
       const sizeAttr = button?.getAttribute('data-size');
       const size = sizeAttr ? parseInt(sizeAttr, 10) : 1;
+      const noArrow = button?.getAttribute('data-no-arrow') === 'true';
       
       if (size === 2) {
         // 2-tile ploppable preview (dumpster)
@@ -581,16 +588,18 @@ export class DevModeScene extends BaseGameplayScene {
           const centerX = (center1X + center2X) / 2;
           const centerY = (center1Y + center2Y) / 2;
           
-          // Draw orientation arrow pointing in the facing direction
-          PloppableManager.drawOrientationArrow(
-            this.highlightGraphics,
-            centerX,
-            centerY,
-            this.ploppableOrientation,
-            20, // arrow length
-            0x00ff00, // green color
-            0.8 // semi-transparent for preview
-          );
+          // Draw orientation arrow pointing in the facing direction (skip if noArrow)
+          if (!noArrow) {
+            PloppableManager.drawOrientationArrow(
+              this.highlightGraphics,
+              centerX,
+              centerY,
+              this.ploppableOrientation,
+              20, // arrow length
+              0x00ff00, // green color
+              0.8 // semi-transparent for preview
+            );
+          }
         } else {
           // Second cell is out of bounds, just draw primary cell in red
           this.highlightGraphics.lineStyle(1.5, 0xff0000, 0.6);
@@ -619,16 +628,18 @@ export class DevModeScene extends BaseGameplayScene {
           this.highlightGraphics.fillStyle(0x00ff00, 0.8);
           this.highlightGraphics.fillCircle(indicatorPos.x, indicatorPos.y, 4);
         } else {
-          // For Type B, show arrow pointing in the facing direction
-          PloppableManager.drawOrientationArrow(
-            this.highlightGraphics,
-            centerX,
-            centerY,
-            this.ploppableOrientation,
-            20, // arrow length
-            0x00ff00, // green color
-            0.8 // semi-transparent for preview
-          );
+          // For Type B, show arrow pointing in the facing direction (skip if noArrow)
+          if (!noArrow) {
+            PloppableManager.drawOrientationArrow(
+              this.highlightGraphics,
+              centerX,
+              centerY,
+              this.ploppableOrientation,
+              20, // arrow length
+              0x00ff00, // green color
+              0.8 // semi-transparent for preview
+            );
+          }
         }
       }
     } else if (this.isLineMode && edge !== undefined) {
@@ -1005,7 +1016,10 @@ export class DevModeScene extends BaseGameplayScene {
               this.selectedPloppableType === 'Vending Machine' ||
               this.selectedPloppableType === 'Dumpster' ||
               this.selectedPloppableType === 'Portable Toilet' ||
-              this.selectedPloppableType === 'Street Light') {
+              this.selectedPloppableType === 'Street Light' ||
+              this.selectedPloppableType === 'Bench' ||
+              this.selectedPloppableType === 'Speed Bump' ||
+              this.selectedPloppableType === 'Crosswalk') {
             description += '\n\nUse Q and E keys to rotate orientation.';
           }
           if (this.selectedPloppableType === 'Security Camera') {
@@ -1045,7 +1059,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light' || this.selectedPloppableType === 'Bench' || this.selectedPloppableType === 'Speed Bump' || this.selectedPloppableType === 'Crosswalk') {
         // Rotate counter-clockwise (Q): 0 -> 3 -> 2 -> 1 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
         // Update highlight if hovering over a cell
@@ -1066,7 +1080,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light' || this.selectedPloppableType === 'Bench' || this.selectedPloppableType === 'Speed Bump' || this.selectedPloppableType === 'Crosswalk') {
         // Rotate clockwise (E): 0 -> 1 -> 2 -> 3 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         // Update highlight if hovering over a cell
@@ -1458,6 +1472,14 @@ export class DevModeScene extends BaseGameplayScene {
       // If it's a pedestrian spawner, remove from pedestrian system
       if (ploppableType === 'Pedestrian Spawner') {
         SpawnerManager.removePedestrianSpawner(gridX, gridY, this.pedestrianSystem);
+      }
+      
+      // Special handling for Crosswalk: remove behavesLikeSidewalk property
+      if (ploppableType === 'Crosswalk') {
+        const cellData = this.gridManager.getCellData(gridX, gridY);
+        if (cellData) {
+          this.gridManager.setCellData(gridX, gridY, { ...cellData, behavesLikeSidewalk: undefined });
+        }
       }
       
       // Remove ploppable using PloppableManager

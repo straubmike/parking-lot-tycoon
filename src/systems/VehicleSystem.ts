@@ -13,6 +13,7 @@ export class VehicleSystem {
   private readonly spawnInterval: number = 3000; // Spawn every 3 seconds (constant for now)
   private readonly minSpeed: number = 30; // Minimum pixels per second
   private readonly maxSpeed: number = 60; // Maximum pixels per second
+  private readonly speedBumpMaxSpeed: number = 30; // Maximum speed on speed bump (pixels per second)
   private readonly potentialParkerChance: number = 0.5; // 50% chance to be a potential parker
   private readonly minParkingDuration: number = 5000; // Minimum parking time (5 seconds)
   private readonly maxParkingDuration: number = 15000; // Maximum parking time (15 seconds)
@@ -375,6 +376,9 @@ export class VehicleSystem {
       this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
     }
     
+    // Roll a new random speed for leaving (between minSpeed and maxSpeed)
+    vehicle.speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
+    
     // Find path to despawner
     const pathToDespawner = this.pathfindingSystem.findPath(
       vehicle.x,
@@ -445,6 +449,9 @@ export class VehicleSystem {
       vehicle.screenY = targetScreenY;
       vehicle.x = target.x;
       vehicle.y = target.y;
+      
+      // Check for speed bump on new cell and adjust speed
+      this.checkSpeedBump(vehicle);
       return true;
     } else {
       // Move towards target
@@ -455,9 +462,31 @@ export class VehicleSystem {
       
       // Update grid position
       const isoPos = this.screenToIso(vehicle.screenX, vehicle.screenY);
-      vehicle.x = Math.round(isoPos.x);
-      vehicle.y = Math.round(isoPos.y);
+      const newGridX = Math.round(isoPos.x);
+      const newGridY = Math.round(isoPos.y);
+      
+      // Check if grid position changed
+      if (newGridX !== vehicle.x || newGridY !== vehicle.y) {
+        vehicle.x = newGridX;
+        vehicle.y = newGridY;
+        
+        // Check for speed bump on new cell and adjust speed
+        this.checkSpeedBump(vehicle);
+      }
       return false;
+    }
+  }
+
+  /**
+   * Check if vehicle is on a speed bump and reduce speed if necessary
+   */
+  private checkSpeedBump(vehicle: VehicleEntity): void {
+    const cellData = this.getCellData(vehicle.x, vehicle.y);
+    if (cellData?.ploppable?.type === 'Speed Bump') {
+      // If vehicle is faster than speed bump limit, reduce speed
+      if (vehicle.speed > this.speedBumpMaxSpeed) {
+        vehicle.speed = this.speedBumpMaxSpeed;
+      }
     }
   }
 

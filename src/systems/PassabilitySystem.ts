@@ -12,10 +12,11 @@ export class PassabilitySystem {
    * Default passability configuration for ploppable types
    * true = passable (entities can move through)
    * false = impassable (entities cannot move into the cell)
+   * 'pedestrian-only' = passable by pedestrians only, vehicles cannot pass
    */
-  private static readonly DEFAULT_PASSABILITY: Record<string, boolean> = {
+  private static readonly DEFAULT_PASSABILITY: Record<string, boolean | 'pedestrian-only'> = {
     'Parking Spot': true, // Parking spots are passable (vehicles park in them)
-    'Trash Can': true, // Trash cans are passable (pedestrians can walk past them)
+    'Trash Can': 'pedestrian-only', // Trash cans are passable by pedestrians only (vehicles cannot pass)
     'Vending Machine': false, // Vending machines are impassable (block movement)
     'Dumpster': false, // Dumpsters are impassable (block movement)
     'Tree': false, // Trees are impassable (block movement)
@@ -24,6 +25,9 @@ export class PassabilitySystem {
     'Street Light': true, // Street lights are passable
     'Security Camera': true, // Security cameras are passable
     'Portable Toilet': false, // Portable toilets are impassable (block movement)
+    'Bench': 'pedestrian-only', // Benches are passable by pedestrians only
+    'Speed Bump': true, // Speed bumps are passable by both
+    'Crosswalk': true, // Crosswalks are passable by both
     'entrance': true, // Entrances are passable
     'exit': true, // Exits are passable
     'Pedestrian Spawner': true, // Spawners are passable
@@ -32,9 +36,9 @@ export class PassabilitySystem {
   /**
    * Check if a ploppable type is passable by default
    * @param ploppableType - The type of ploppable
-   * @returns true if passable, false if impassable
+   * @returns true if passable, false if impassable, 'pedestrian-only' if only pedestrians can pass
    */
-  static isPloppableTypePassable(ploppableType: string): boolean {
+  static isPloppableTypePassable(ploppableType: string): boolean | 'pedestrian-only' {
     // Check if there's a specific rule for this type
     if (ploppableType in this.DEFAULT_PASSABILITY) {
       return this.DEFAULT_PASSABILITY[ploppableType];
@@ -48,9 +52,9 @@ export class PassabilitySystem {
    * Check if a ploppable is passable
    * Uses the ploppable's passable property if set, otherwise falls back to type-based rules
    * @param ploppable - The ploppable to check
-   * @returns true if passable, false if impassable
+   * @returns true if passable, false if impassable, 'pedestrian-only' if only pedestrians can pass
    */
-  static isPloppablePassable(ploppable: Ploppable): boolean {
+  static isPloppablePassable(ploppable: Ploppable): boolean | 'pedestrian-only' {
     // If passable property is explicitly set, use it
     // However, if the property conflicts with the type rule, trust the type rule
     // (This handles cases where old saves have incorrect passable values)
@@ -58,6 +62,12 @@ export class PassabilitySystem {
       const typeRuleValue = this.isPloppableTypePassable(ploppable.type);
       // If the explicit value matches the type rule, use it
       // Otherwise, prefer the type rule (it's the source of truth)
+      // Note: passable property is boolean, so if type rule is 'pedestrian-only', 
+      // we need to convert: true -> 'pedestrian-only' (if type is pedestrian-only), false -> false
+      if (typeRuleValue === 'pedestrian-only') {
+        // Type is pedestrian-only, passable boolean is ambiguous, use type rule
+        return typeRuleValue;
+      }
       if (ploppable.passable === typeRuleValue) {
         return ploppable.passable;
       }
@@ -71,8 +81,7 @@ export class PassabilitySystem {
 
   /**
    * Check if a ploppable blocks movement for a specific entity type
-   * Currently, all impassable ploppables block both vehicles and pedestrians
-   * This can be extended in the future to have different rules per entity type
+   * Supports different rules per entity type (e.g., pedestrian-only passable ploppables)
    * @param ploppable - The ploppable to check
    * @param entityType - The type of entity ('vehicle' | 'pedestrian')
    * @returns true if the ploppable blocks this entity type
@@ -81,19 +90,29 @@ export class PassabilitySystem {
     ploppable: Ploppable,
     entityType: 'vehicle' | 'pedestrian'
   ): boolean {
-    // For now, impassable ploppables block both vehicles and pedestrians
-    // This can be extended in the future if needed
-    return !this.isPloppablePassable(ploppable);
+    const passability = this.isPloppablePassable(ploppable);
+    
+    // Handle pedestrian-only passable ploppables
+    if (passability === 'pedestrian-only') {
+      return entityType === 'vehicle'; // Blocks vehicles, not pedestrians
+    }
+    
+    // For boolean passability, both entity types follow the same rule
+    return !passability;
   }
 
   /**
    * Get the passable property value for a ploppable type
    * Used when creating/placing ploppables to set the passable property
+   * Converts 'pedestrian-only' to true (since passable property is boolean)
+   * The actual blocking logic is handled by doesPloppableBlockEntity
    * @param ploppableType - The type of ploppable
    * @returns The passable value (true or false)
    */
   static getPassableValueForType(ploppableType: string): boolean {
-    return this.isPloppableTypePassable(ploppableType);
+    const passability = this.isPloppableTypePassable(ploppableType);
+    // Convert 'pedestrian-only' to true (we'll use doesPloppableBlockEntity for entity-specific checks)
+    return passability !== false;
   }
 }
 

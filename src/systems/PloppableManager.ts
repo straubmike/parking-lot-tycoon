@@ -382,9 +382,12 @@ export class PloppableManager {
     else if (ploppable.type === 'Street Light') emoji = '💡';
     else if (ploppable.type === 'Security Camera') emoji = '📹';
     else if (ploppable.type === 'Portable Toilet') emoji = '🚽';
+    else if (ploppable.type === 'Bench') emoji = '🪑';
+    else if (ploppable.type === 'Speed Bump') emoji = '⛰️';
+    else if (ploppable.type === 'Crosswalk') emoji = '🚸';
     
-    // Handle non-oriented ploppables (Tree, Shrub, Flower Patch, Security Camera) - render at center, no arrow
-    if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Security Camera') {
+    // Handle non-oriented ploppables (Tree, Shrub, Flower Patch, Security Camera, Speed Bump, Crosswalk) - render at center, no arrow
+    if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Security Camera' || ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk') {
       const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
       
@@ -456,15 +459,18 @@ export class PloppableManager {
         label.setDepth(3);
         
         // Draw orientation arrow pointing in the facing direction (from center)
-        this.drawOrientationArrow(
-          graphics,
-          centerX,
-          centerY,
-          orientation,
-          20, // arrow length
-          0x00ff00, // green color
-          1.0 // full opacity
-        );
+        // Skip arrow for Speed Bump and Crosswalk
+        if (ploppable.type !== 'Speed Bump' && ploppable.type !== 'Crosswalk') {
+          this.drawOrientationArrow(
+            graphics,
+            centerX,
+            centerY,
+            orientation,
+            20, // arrow length
+            0x00ff00, // green color
+            1.0 // full opacity
+          );
+        }
         
         return label;
       } else {
@@ -480,15 +486,18 @@ export class PloppableManager {
         label.setDepth(3);
         
         // Draw orientation arrow pointing in the facing direction
-        this.drawOrientationArrow(
-          graphics,
-          centerX,
-          centerY,
-          orientation,
-          20, // arrow length
-          0x00ff00, // green color
-          1.0 // full opacity
-        );
+        // Skip arrow for Speed Bump and Crosswalk
+        if (ploppable.type !== 'Speed Bump' && ploppable.type !== 'Crosswalk') {
+          this.drawOrientationArrow(
+            graphics,
+            centerX,
+            centerY,
+            orientation,
+            20, // arrow length
+            0x00ff00, // green color
+            1.0 // full opacity
+          );
+        }
         
         return label;
       }
