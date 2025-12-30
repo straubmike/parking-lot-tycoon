@@ -78,6 +78,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     // Set up camera (basic controls - scenes can extend)
     this.setupCamera();
     
+    // Setup game stats UI interactions
+    this.setupGameStatsUI();
+    
     // Scene-specific setup (to be implemented by subclasses)
     this.setupScene();
   }
@@ -215,6 +218,21 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   }
 
   /**
+   * Setup game stats UI interactions (mouseover for rating expansion)
+   */
+  protected setupGameStatsUI(): void {
+    const gameStatsEl = document.getElementById('game-stats');
+    if (gameStatsEl) {
+      gameStatsEl.addEventListener('mouseenter', () => {
+        gameStatsEl.classList.add('expanded');
+      });
+      gameStatsEl.addEventListener('mouseleave', () => {
+        gameStatsEl.classList.remove('expanded');
+      });
+    }
+  }
+
+  /**
    * Update loop - called by Phaser
    */
   update(_time: number, delta: number): void {
@@ -264,8 +282,36 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       const components = GameSystems.rating.getComponentRatings(this.gridManager, this.gridWidth, this.gridHeight);
       const currentDay = GameSystems.time.getCurrentDay();
       const previous = currentDay === 0 ? null : GameSystems.rating.getPreviousDayRating();
-      const previousDisplay = previous === null ? 'n/a' : previous.toFixed(1);
-      ratingEl.textContent = `${components.total.toFixed(1)} : ${previousDisplay} (Parker: ${components.parker.toFixed(1)}, Appeal: ${components.appeal.toFixed(0)}, Safety: ${components.safety.toFixed(0)})`;
+      
+      // Floor the total rating (since components are integers, total is just their sum)
+      const totalRating = Math.floor(components.total);
+      
+      // Previous day rating display (also floored if not null)
+      const previousDisplay = previous === null ? 'n/a' : Math.floor(previous).toString();
+      
+      // Collapsed view: only show current and previous rating
+      ratingEl.textContent = `${totalRating} : ${previousDisplay}`;
+      
+      // Update expanded view components (if elements exist)
+      const parkerEl = document.getElementById('rating-parker');
+      const appealEl = document.getElementById('rating-appeal');
+      const safetyEl = document.getElementById('rating-safety');
+      
+      if (parkerEl) {
+        // Parker contribution is 70% of parker rating (0-70)
+        const parkerContribution = Math.floor(components.parker * 0.70);
+        parkerEl.textContent = `${parkerContribution}/70`;
+      }
+      if (appealEl) {
+        // Appeal contribution is already 0-15
+        const appealContribution = Math.floor(components.appeal);
+        appealEl.textContent = `${appealContribution}/15`;
+      }
+      if (safetyEl) {
+        // Safety contribution is already 0-15
+        const safetyContribution = Math.floor(components.safety);
+        safetyEl.textContent = `${safetyContribution}/15`;
+      }
     }
   }
 
