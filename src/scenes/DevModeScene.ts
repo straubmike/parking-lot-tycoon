@@ -8,6 +8,7 @@ import { SpawnerManager } from '@/managers/SpawnerManager';
 import { GridInteractionHandler } from '@/systems/GridInteractionHandler';
 import { GridManager } from '@/core/GridManager';
 import { SafetySystem } from '@/systems/SafetySystem';
+import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
 
 export class DevModeScene extends BaseGameplayScene {
   // Dev mode specific state
@@ -78,6 +79,9 @@ export class DevModeScene extends BaseGameplayScene {
     // Set up appeal and safety visualization buttons
     this.setupAppealVisualizationButton();
     this.setupSafetyVisualizationButton();
+    
+    // Set up parking rate input handler
+    this.setupRateInputHandler();
   }
 
   // Grid rendering methods removed - now in BaseGameplayScene.render() and GridRenderer
@@ -326,6 +330,14 @@ export class DevModeScene extends BaseGameplayScene {
         }
         // Security Camera can be placed even if cell already has a ploppable (Street Light)
         // We'll handle this specially below
+      } else if (this.selectedPloppableType === 'Parking Meter') {
+        // Parking Meter must be placed on a parking spot
+        const cellData = this.gridManager.getCellData(gridX, gridY);
+        if (!cellData?.ploppable || cellData.ploppable.type !== 'Parking Spot') {
+          return; // Cannot place Parking Meter without Parking Spot
+        }
+        // Parking Meter can be placed even if cell already has a ploppable (Parking Spot)
+        // We'll handle this specially below
       } else {
         // Check if cell already has a ploppable, spawner, or despawner
         if (!PloppableManager.canPlacePloppable(gridX, gridY, this.gridManager, this.selectedPloppableType || undefined, this.ploppableOrientation, this.gridWidth, this.gridHeight)) {
@@ -374,6 +386,62 @@ export class DevModeScene extends BaseGameplayScene {
         }
       }
       
+      // Special handling for Parking Meter: place on parking spot with auto-orientation
+      if (this.selectedPloppableType === 'Parking Meter') {
+        const cellData = this.gridManager.getCellData(gridX, gridY);
+        const parkingSpot = cellData?.ploppable;
+        if (parkingSpot && parkingSpot.type === 'Parking Spot') {
+          // Auto-orient meter to the side OPPOSITE the parking spot's opening
+          // Parking spot orientation: 0=missing left (edge 3), 1=missing bottom (edge 2), 2=missing top (edge 0), 3=missing right (edge 1)
+          // Meter Type A orientation: 0=top-left, 1=top-right, 2=bottom-right, 3=bottom-left
+          // Correct mapping: spot 0 (opens left) -> meter 2 (bottom-right), spot 1 (opens bottom) -> meter 0 (top-left),
+          //                  spot 2 (opens top) -> meter 1 (top-right), spot 3 (opens right) -> meter 3 (bottom-left)
+          const spotOrientation = parkingSpot.orientation || 0;
+          
+          // User's hard mapping: cases 1=top left, 2=top right, 3=bottom right, 4=bottom left
+          // Meters should be at: 3, 4, 1, 2 (opposite positions)
+          // Mapping: orientation 0(case1) -> Type A 2, orientation 1(case4) -> Type A 1, 
+          //          orientation 2(case2) -> Type A 3, orientation 3(case3) -> Type A 0
+          const oppositeOrientationMap = [2, 1, 3, 0]; // Maps spot orientation [0,1,2,3] to meter Type A orientation
+          const meterOrientation = oppositeOrientationMap[spotOrientation];
+          
+          // Create Parking Meter ploppable
+          // Store the original parking spot orientation so GridRenderer can draw spot lines correctly
+          const parkingMeter: Ploppable = {
+            id: `${this.selectedPloppableType}-${gridX}-${gridY}-${Date.now()}`,
+            type: this.selectedPloppableType,
+            x: gridX,
+            y: gridY,
+            cost: 0,
+            orientation: meterOrientation,
+            orientationType: 'A', // Type A orientation
+            passable: passable,
+            parkingSpotOrientation: spotOrientation // Store original spot orientation for drawing spot lines
+          };
+          
+          // Place Parking Meter (can be on same cell as Parking Spot)
+          // Note: This will need special handling in PloppableManager or we store both ploppables
+          // For now, we'll just store the meter (replacing the spot visually, but keeping spot data)
+          // Actually, we need both - the spot for parking logic, meter for fee collection
+          // Let's store both by keeping the spot and adding meter metadata
+          // Actually, looking at Security Camera pattern, it replaces the ploppable
+          // But for Parking Meter, we want both to exist. Let's check if we can store multiple ploppables...
+          // Looking at CellData, it only has one ploppable field. So we need a different approach.
+          // We'll store the meter as the ploppable, but check for parking spot in VehicleSystem differently.
+          // Actually wait - let's just store the meter and the parking spot data separately.
+          // Or better: store the meter, and the parking spot functionality can check for both.
+          // But for now, let's just store the meter (following Security Camera pattern)
+          this.gridManager.setCellData(gridX, gridY, { ploppable: parkingMeter });
+          
+          // Redraw grid
+          this.redrawGrid();
+          
+          // Remember last painted cell
+          this.lastPaintedCell = { x: gridX, y: gridY };
+          return;
+        }
+      }
+      
       // Create ploppable
       const ploppable: Ploppable = {
         id: `${this.selectedPloppableType}-${gridX}-${gridY}-${Date.now()}`,
@@ -385,6 +453,11 @@ export class DevModeScene extends BaseGameplayScene {
         orientationType: orientationType,
         passable: passable
       };
+      
+      // For Parking Booth, set subType to BOOTH for the primary tile
+      if (this.selectedPloppableType === 'Parking Booth') {
+        ploppable.subType = 'BOOTH';
+      }
       
       // Store in cell data using PloppableManager
       PloppableManager.placePloppable(gridX, gridY, ploppable, this.gridManager, this.gridWidth, this.gridHeight);
@@ -496,6 +569,7 @@ export class DevModeScene extends BaseGameplayScene {
       // 1 = missing bottom (edge 2) - draws edges 0,1,3
       // 2 = missing top (edge 0) - draws edges 1,2,3
       // 3 = missing right (edge 1) - draws edges 0,2,3
+      
       const edgesToDraw = [
         [0, 1, 2], // orientation 0: missing left (3) - draw top, right, bottom
         [0, 1, 3], // orientation 1: missing bottom (2) - draw top, right, left
@@ -547,6 +621,74 @@ export class DevModeScene extends BaseGameplayScene {
       this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
       this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
       this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+    } else if (this.selectedPloppableType === 'Parking Meter') {
+      // Draw preview for Parking Meter (check if Parking Spot exists)
+      const cellData = this.gridManager.getCellData(gridX, gridY);
+      const hasParkingSpot = cellData?.ploppable?.type === 'Parking Spot';
+      const highlightColor = hasParkingSpot ? 0x00ff00 : 0xff0000; // Green if valid, red if invalid
+      
+      this.highlightGraphics.lineStyle(1.5, highlightColor, 0.6);
+      this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+      this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+      this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+      this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+      
+      // Draw Type A position indicator (meter position) - on OPPOSITE side of opening
+      const centerX = (offsetPoints[0].x + offsetPoints[2].x) / 2;
+      const centerY = (offsetPoints[0].y + offsetPoints[2].y) / 2;
+      if (hasParkingSpot) {
+        // Use parking spot's orientation to determine meter position (opposite side)
+        const parkingSpotOrientation = cellData.ploppable.orientation || 0;
+        
+        const oppositeOrientationMap = [2, 1, 3, 0]; // Maps spot orientation to opposite meter orientation (must match placement mapping)
+        const meterOrientation = oppositeOrientationMap[parkingSpotOrientation];
+        const indicatorPos = PloppableManager.getTypeAPosition(centerX, centerY, meterOrientation);
+        
+        this.highlightGraphics.fillStyle(0x00ff00, 0.8);
+        this.highlightGraphics.fillCircle(indicatorPos.x, indicatorPos.y, 4);
+      }
+    } else if (this.selectedPloppableType === 'Parking Booth') {
+      // Special preview for Parking Booth: booth emoji on primary, target emoji on collection
+      const secondCell = PloppableManager.getSecondCellForTwoTile(gridX, gridY, this.ploppableOrientation, this.gridWidth, this.gridHeight);
+      
+      if (secondCell) {
+        // Draw highlight for primary cell (booth)
+        this.highlightGraphics.lineStyle(1.5, 0x00ff00, 0.6);
+        this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+        this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+        this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+        this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+        
+        // Draw highlight for second cell (collection)
+        const secondPoints = getIsometricTilePoints(secondCell.x, secondCell.y);
+        const secondOffsetPoints = secondPoints.map(p => ({
+          x: p.x + this.gridOffsetX,
+          y: p.y + this.gridOffsetY
+        }));
+        this.highlightGraphics.lineBetween(secondOffsetPoints[0].x, secondOffsetPoints[0].y, secondOffsetPoints[1].x, secondOffsetPoints[1].y);
+        this.highlightGraphics.lineBetween(secondOffsetPoints[1].x, secondOffsetPoints[1].y, secondOffsetPoints[2].x, secondOffsetPoints[2].y);
+        this.highlightGraphics.lineBetween(secondOffsetPoints[2].x, secondOffsetPoints[2].y, secondOffsetPoints[3].x, secondOffsetPoints[3].y);
+        this.highlightGraphics.lineBetween(secondOffsetPoints[3].x, secondOffsetPoints[3].y, secondOffsetPoints[0].x, secondOffsetPoints[0].y);
+        
+        // Draw booth emoji preview on primary cell center
+        const centerX = (offsetPoints[0].x + offsetPoints[2].x) / 2;
+        const centerY = (offsetPoints[0].y + offsetPoints[2].y) / 2;
+        // Note: We can't easily draw text in graphics, so we'll just show the highlight
+        // The actual emoji will be drawn when placed
+        
+        // Draw target emoji preview on collection cell center
+        const collectionCenterX = (secondOffsetPoints[0].x + secondOffsetPoints[2].x) / 2;
+        const collectionCenterY = (secondOffsetPoints[0].y + secondOffsetPoints[2].y) / 2;
+        // Note: We can't easily draw text in graphics, so we'll just show the highlight
+        // The actual emoji will be drawn when placed
+      } else {
+        // Second cell is out of bounds, just draw primary cell in red
+        this.highlightGraphics.lineStyle(1.5, 0xff0000, 0.6);
+        this.highlightGraphics.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
+        this.highlightGraphics.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
+        this.highlightGraphics.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
+        this.highlightGraphics.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
+      }
     } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Bench' || this.selectedPloppableType === 'Speed Bump' || this.selectedPloppableType === 'Crosswalk') {
       // Draw preview for oriented ploppables
       // Get orientation type and size from button data
@@ -831,6 +973,20 @@ export class DevModeScene extends BaseGameplayScene {
     });
   }
 
+  private setupRateInputHandler(): void {
+    // Wait for DOM to be ready
+    this.time.delayedCall(100, () => {
+      const rateInput = document.getElementById('parking-rate-input') as HTMLInputElement;
+      if (rateInput) {
+        rateInput.addEventListener('change', () => {
+          const rate = Math.max(1, Math.floor(parseFloat(rateInput.value) || 1));
+          rateInput.value = rate.toString();
+          ParkingTimerSystem.getInstance().setParkingRate(rate);
+        });
+      }
+    });
+  }
+
   private setupColorButtons(): void {
     // Wait for DOM to be ready
     this.time.delayedCall(100, () => {
@@ -974,6 +1130,8 @@ export class DevModeScene extends BaseGameplayScene {
     const selectionName = document.getElementById('selection-name');
     const selectionDescription = document.getElementById('selection-description');
     const selectionInstructions = document.getElementById('selection-instructions');
+    const rateInputContainer = document.getElementById('selection-rate-input-container');
+    const rateInput = document.getElementById('parking-rate-input') as HTMLInputElement;
 
     if (this.isVehicleSpawnerMode) {
       // Show vehicle spawner info
@@ -1024,11 +1182,15 @@ export class DevModeScene extends BaseGameplayScene {
               this.selectedPloppableType === 'Street Light' ||
               this.selectedPloppableType === 'Bench' ||
               this.selectedPloppableType === 'Speed Bump' ||
-              this.selectedPloppableType === 'Crosswalk') {
+              this.selectedPloppableType === 'Crosswalk' ||
+              this.selectedPloppableType === 'Parking Booth') {
             instructions = 'Use Q and E keys to rotate orientation.';
           }
           if (this.selectedPloppableType === 'Security Camera') {
             instructions = 'Can only be placed on cells that already contain a Street Light.';
+          }
+          if (this.selectedPloppableType === 'Parking Meter') {
+            instructions = 'Can only be placed on cells that already contain a Parking Spot.';
           }
         }
         selectionDescription.textContent = description;
@@ -1037,6 +1199,16 @@ export class DevModeScene extends BaseGameplayScene {
           selectionInstructions.style.display = 'block';
         } else {
           selectionInstructions.style.display = 'none';
+        }
+        
+        // Show rate input for Parking Meter and Parking Booth
+        if ((this.selectedPloppableType === 'Parking Meter' || this.selectedPloppableType === 'Parking Booth') && rateInputContainer && rateInput) {
+          rateInputContainer.style.display = 'block';
+          // Initialize with current rate
+          const currentRate = ParkingTimerSystem.getInstance().getParkingRate();
+          rateInput.value = currentRate.toString();
+        } else if (rateInputContainer) {
+          rateInputContainer.style.display = 'none';
         }
         
         selectionInfo.style.display = 'block';
@@ -1091,7 +1263,7 @@ export class DevModeScene extends BaseGameplayScene {
         if (this.hoveredCell) {
           this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
         }
-      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light' || this.selectedPloppableType === 'Bench' || this.selectedPloppableType === 'Speed Bump' || this.selectedPloppableType === 'Crosswalk') {
+      } else if (this.selectedPloppableType === 'Trash Can' || this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Street Light' || this.selectedPloppableType === 'Bench' || this.selectedPloppableType === 'Speed Bump' || this.selectedPloppableType === 'Crosswalk' || this.selectedPloppableType === 'Parking Booth') {
         // Rotate clockwise (E): 0 -> 1 -> 2 -> 3 -> 0
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         // Update highlight if hovering over a cell

@@ -204,7 +204,6 @@
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-bottom: 2px;
-            align-self: center;
         }
         
         .stat-value {
@@ -237,7 +236,6 @@
             margin-top: 5px;
             padding-top: 10px;
             border-top: 1px solid #3a3a3a;
-            align-self: center;
         }
         
         #game-stats.expanded #rating-breakdown {
@@ -341,6 +339,8 @@
                 <button class="ploppable-button" data-name="Bench" data-description="Why don't you have a seat right over there?" data-orientation-type="A" data-passable="true" data-pedestrian-only="true">🪑</button>
                 <button class="ploppable-button" data-name="Speed Bump" data-description="Speed Bumps slow down traffic making the lot safer." data-orientation-type="B" data-passable="true" data-no-arrow="true">⛰️</button>
                 <button class="ploppable-button" data-name="Crosswalk" data-description="Benefits pedestrian pathing while keeping vehicle asphalt favorability." data-orientation-type="B" data-passable="true" data-no-arrow="true">🚸</button>
+                <button class="ploppable-button" data-name="Parking Meter" data-description="Parking meters charge per 15 minutes, though will generate negative rating if the rate is too high." data-orientation-type="A" data-passable="true">⏰</button>
+                <button class="ploppable-button" data-name="Parking Booth" data-description="Place a booth at the exit of the lot to collect parking fare." data-orientation-type="B" data-passable="false" data-size="2">🏪</button>
             </div>
             
             <div class="section-title">Tools</div>
@@ -377,6 +377,10 @@
                 <div id="selection-name" style="color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 10px;"></div>
                 <div id="selection-description" style="color: #ccc; font-size: 14px; line-height: 1.5;"></div>
                 <div id="selection-instructions" style="color: #999; font-size: 12px; font-style: italic; margin-top: 8px; display: none;"></div>
+                <div id="selection-rate-input-container" style="margin-top: 15px; display: none;">
+                    <label style="color: #fff; font-size: 14px; display: block; margin-bottom: 5px;">Parking Rate ($ per 15 min):</label>
+                    <input type="number" id="parking-rate-input" min="1" step="1" value="1" style="width: 100%; height: 35px; background-color: #3a3a3a; color: #fff; border: 2px solid #555; border-radius: 4px; padding: 5px; font-size: 14px; box-sizing: border-box;">
+                </div>
             </div>
         </div>
     </div>

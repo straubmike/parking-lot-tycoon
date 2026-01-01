@@ -508,13 +508,14 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    * Get all parking spots from the grid
    */
   protected getAllParkingSpots(): Ploppable[] {
+    // Include both Parking Spot and Parking Meter types (meters are placed on spots)
     const parkingSpots: Ploppable[] = [];
     
     for (let x = 0; x < this.gridWidth; x++) {
       for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
         const ploppable = cellData?.ploppable;
-        if (ploppable && ploppable.type === 'Parking Spot') {
+        if (ploppable && (ploppable.type === 'Parking Spot' || ploppable.type === 'Parking Meter')) {
           parkingSpots.push(ploppable);
         }
       }

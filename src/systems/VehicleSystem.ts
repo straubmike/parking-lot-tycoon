@@ -5,6 +5,7 @@ import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { PedestrianSystem } from './PedestrianSystem';
 import { PathfindingSystem, EdgeBlockedCallback, MoveCostCallback } from './PathfindingSystem';
 import { GameSystems } from '@/core/GameSystems';
+import { ParkingTimerSystem } from './ParkingTimerSystem';
 
 export class VehicleSystem {
   private vehicles: VehicleEntity[] = [];
@@ -108,7 +109,7 @@ export class VehicleSystem {
    */
   private reserveParkingSpot(x: number, y: number): boolean {
     const cellData = this.getCellData(x, y);
-    if (cellData?.ploppable && cellData.ploppable.type === 'Parking Spot') {
+    if (cellData?.ploppable && (cellData.ploppable.type === 'Parking Spot' || cellData.ploppable.type === 'Parking Meter')) {
       if (!cellData.ploppable.reserved) {
         cellData.ploppable.reserved = true;
         return true;
@@ -122,7 +123,7 @@ export class VehicleSystem {
    */
   private unreserveParkingSpot(x: number, y: number): void {
     const cellData = this.getCellData(x, y);
-    if (cellData?.ploppable && cellData.ploppable.type === 'Parking Spot') {
+    if (cellData?.ploppable && (cellData.ploppable.type === 'Parking Spot' || cellData.ploppable.type === 'Parking Meter')) {
       cellData.ploppable.reserved = false;
     }
   }
@@ -252,6 +253,8 @@ export class VehicleSystem {
     
     this.vehicles.forEach(vehicle => {
       if (vehicle.state === 'despawning') {
+        // Cancel parking timer if still active (vehicle despawned without paying at booth)
+        ParkingTimerSystem.getInstance().cancelParkingTimer(vehicle.id);
         // Finalize parker's score before removing
         if (vehicle.isPotentialParker) {
           GameSystems.rating.finalizeParker(vehicle.id);
@@ -332,6 +335,12 @@ export class VehicleSystem {
    * Update a vehicle in the 'parking' state
    */
   private updateParkingVehicle(vehicle: VehicleEntity, delta: number): void {
+    // Start parking timer when first entering parking state
+    if (vehicle.parkingTimer === vehicle.parkingDuration) {
+      // Just started parking - start the parking timer system
+      ParkingTimerSystem.getInstance().startParkingTimer(vehicle.id);
+    }
+    
     // Spawn pedestrian when first entering parking state
     if (this.pedestrianSystem) {
       const existingPedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
@@ -371,6 +380,18 @@ export class VehicleSystem {
    * Start a parked vehicle leaving towards the despawner
    */
   private startVehicleLeaving(vehicle: VehicleEntity): void {
+    // Check if parking spot has a meter and collect fee
+    if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
+      const cellData = this.getCellData(vehicle.reservedSpotX, vehicle.reservedSpotY);
+      if (cellData?.ploppable?.type === 'Parking Meter') {
+        // Collect parking meter fee (this will cancel the timer internally)
+        ParkingTimerSystem.getInstance().collectMeterFee(vehicle.id);
+      } else {
+        // No meter, cancel timer (vehicle will pay at booth if they pass through one)
+        // Don't cancel here - let them pay at booth if they encounter one
+      }
+    }
+    
     // Unreserve the parking spot
     if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
       this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
@@ -450,6 +471,9 @@ export class VehicleSystem {
       vehicle.x = target.x;
       vehicle.y = target.y;
       
+      // Check for parking booth collection tile
+      this.checkParkingBooth(vehicle);
+      
       // Check for speed bump on new cell and adjust speed
       this.checkSpeedBump(vehicle);
       return true;
@@ -470,10 +494,24 @@ export class VehicleSystem {
         vehicle.x = newGridX;
         vehicle.y = newGridY;
         
+        // Check for parking booth collection tile
+        this.checkParkingBooth(vehicle);
+        
         // Check for speed bump on new cell and adjust speed
         this.checkSpeedBump(vehicle);
       }
       return false;
+    }
+  }
+  
+  /**
+   * Check if vehicle is on a parking booth collection tile and collect fee
+   */
+  private checkParkingBooth(vehicle: VehicleEntity): void {
+    const cellData = this.getCellData(vehicle.x, vehicle.y);
+    if (cellData?.ploppable?.type === 'Parking Booth' && cellData.ploppable.subType === 'COLLECTION') {
+      // Vehicle entered booth collection tile - collect fee
+      ParkingTimerSystem.getInstance().collectBoothFee(vehicle.id);
     }
   }
 

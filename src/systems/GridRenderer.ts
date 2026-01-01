@@ -100,9 +100,14 @@ export class GridRenderer {
     gridOffsetX: number,
     gridOffsetY: number
   ): void {
-    if (cellData?.ploppable?.type !== 'Parking Spot') return;
+    // Draw parking spot lines for both Parking Spot and Parking Meter (meters are placed on spots)
+    if (cellData?.ploppable?.type !== 'Parking Spot' && cellData?.ploppable?.type !== 'Parking Meter') return;
     
-    const orientation = cellData.ploppable.orientation || 0;
+    // For Parking Meters, use the stored parkingSpotOrientation (parking spot edge orientation)
+    // For Parking Spots, use orientation directly (it's already a parking spot edge orientation)
+    const orientation = cellData.ploppable.type === 'Parking Meter' 
+      ? (cellData.ploppable.parkingSpotOrientation ?? cellData.ploppable.orientation ?? 0)
+      : (cellData.ploppable.orientation || 0);
     
     // Get diamond points
     const points = getIsometricTilePoints(gridX, gridY);

@@ -3,6 +3,7 @@ import { RatingSystem } from '@/systems/RatingSystem';
 import { EconomySystem } from '@/systems/EconomySystem';
 import { AppealSystem } from '@/systems/AppealSystem';
 import { SafetySystem } from '@/systems/SafetySystem';
+import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
 import { GridManager } from './GridManager';
 
 /**
@@ -48,6 +49,13 @@ export class GameSystems {
   }
   
   /**
+   * Access the ParkingTimerSystem singleton
+   */
+  static get parkingTimer(): ParkingTimerSystem {
+    return ParkingTimerSystem.getInstance();
+  }
+  
+  /**
    * Reset all systems for a new challenge
    * Call this when starting a new challenge or entering dev mode
    * 
@@ -60,6 +68,7 @@ export class GameSystems {
     this.time.reset();
     this.rating.reset();
     this.economy.reset(initialBudget);
+    this.parkingTimer.reset();
     if (gridManager && gridWidth !== undefined && gridHeight !== undefined) {
       this.appeal.reset(gridManager, gridWidth, gridHeight);
       this.safety.reset(gridManager, gridWidth, gridHeight);
@@ -82,6 +91,7 @@ export class GameSystems {
    */
   static update(delta: number, gridManager?: GridManager, gridWidth?: number, gridHeight?: number): void {
     this.time.update(delta);
+    this.parkingTimer.update(delta);
     
     // Check for 11:59 PM rating finalization
     if (this.time.consumeRatingFinalized()) {

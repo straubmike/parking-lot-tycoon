@@ -37,6 +37,8 @@ export interface Ploppable {
   orientationType?: 'A' | 'B'; // A = border midpoint position, B = central with rotation indicator
   reserved?: boolean; // For parking spots: true if reserved by a vehicle
   passable?: boolean; // Whether pedestrians and vehicles can pass through
+  subType?: 'BOOTH' | 'COLLECTION'; // For Parking Booth: BOOTH = drawn tile (impassable), COLLECTION = collection tile (passable)
+  parkingSpotOrientation?: number; // For Parking Meter: stores the original parking spot orientation (missing edge) for drawing spot lines
 }
 
 export interface NPC {

@@ -28,6 +28,8 @@ export class PassabilitySystem {
     'Bench': 'pedestrian-only', // Benches are passable by pedestrians only
     'Speed Bump': true, // Speed bumps are passable by both
     'Crosswalk': true, // Crosswalks are passable by both
+    'Parking Meter': true, // Parking meters are passable
+    'Parking Booth': false, // Parking booths are impassable (but collection tile is passable - handled via subType)
     'entrance': true, // Entrances are passable
     'exit': true, // Exits are passable
     'Pedestrian Spawner': true, // Spawners are passable
@@ -90,6 +92,11 @@ export class PassabilitySystem {
     ploppable: Ploppable,
     entityType: 'vehicle' | 'pedestrian'
   ): boolean {
+    // Special handling for Parking Booth: COLLECTION subType is passable, BOOTH subType is impassable
+    if (ploppable.type === 'Parking Booth') {
+      return ploppable.subType !== 'COLLECTION'; // COLLECTION is passable, BOOTH is impassable
+    }
+    
     const passability = this.isPloppablePassable(ploppable);
     
     // Handle pedestrian-only passable ploppables

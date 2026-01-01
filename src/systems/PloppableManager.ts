@@ -50,10 +50,12 @@ export class PloppableManager {
     
     // Normalize the direction vector and scale by distance
     const scale = distance / directionLength;
-    return {
+    const result = {
       x: centerX + dirX * scale,
       y: centerY + dirY * scale
     };
+    
+    return result;
   }
 
   /**
@@ -144,7 +146,7 @@ export class PloppableManager {
    * Get the size of a ploppable (number of tiles it occupies)
    */
   static getPloppableSize(ploppableType: string): number {
-    if (ploppableType === 'Dumpster') {
+    if (ploppableType === 'Dumpster' || ploppableType === 'Parking Booth') {
       return 2;
     }
     return 1; // Default to single tile
@@ -270,8 +272,18 @@ export class PloppableManager {
       const orientation = ploppable.orientation ?? 0;
       const secondCell = this.getSecondCellForTwoTile(gridX, gridY, orientation, width, height);
       if (secondCell) {
-        // Store the same ploppable reference in the second cell
-        gridManager.setCellData(secondCell.x, secondCell.y, { ploppable });
+        // For Parking Booth, create a copy with COLLECTION subType for the second cell
+        if (ploppable.type === 'Parking Booth') {
+          const collectionPloppable: Ploppable = {
+            ...ploppable,
+            subType: 'COLLECTION',
+            passable: true // Collection tile is passable
+          };
+          gridManager.setCellData(secondCell.x, secondCell.y, { ploppable: collectionPloppable });
+        } else {
+          // Store the same ploppable reference in the second cell (for other 2-tile ploppables)
+          gridManager.setCellData(secondCell.x, secondCell.y, { ploppable });
+        }
       }
     }
     
@@ -311,14 +323,23 @@ export class PloppableManager {
       if (secondCell) {
         // Check if this is the primary cell (ploppable.x, ploppable.y matches this cell)
         // If not, we need to find the primary cell
+        // For Parking Booth, also check subType: COLLECTION means this is the second cell
         let primaryX = gridX;
         let primaryY = gridY;
+        let isSecondCell = false;
         
-        // If this is the second cell, calculate the primary cell
-        if (gridX !== ploppable.x || gridY !== ploppable.y) {
+        if (ploppable.type === 'Parking Booth' && ploppable.subType === 'COLLECTION') {
+          isSecondCell = true;
           primaryX = ploppable.x;
           primaryY = ploppable.y;
-          // Remove from this (second) cell first
+        } else if (gridX !== ploppable.x || gridY !== ploppable.y) {
+          isSecondCell = true;
+          primaryX = ploppable.x;
+          primaryY = ploppable.y;
+        }
+        
+        // If this is the second cell, remove from this cell first, then remove from primary
+        if (isSecondCell) {
           gridManager.setCellData(gridX, gridY, { ploppable: undefined as any });
           // Then remove from primary cell (which will also remove from its second cell)
           return this.removePloppable(primaryX, primaryY, gridManager, width, height);
@@ -362,10 +383,31 @@ export class PloppableManager {
       return null;
     }
     
-    // For 2-tile ploppables, only render from the primary cell (where ploppable.x, ploppable.y matches)
+    // For 2-tile ploppables, handle rendering based on type
     const size = this.getPloppableSize(ploppable.type);
-    if (size === 2 && (gridX !== ploppable.x || gridY !== ploppable.y)) {
-      return null; // This is the second cell, skip rendering (will be rendered from primary cell)
+    if (size === 2) {
+      // Special handling for Parking Booth: render booth on primary, target on collection
+      if (ploppable.type === 'Parking Booth') {
+        if (ploppable.subType === 'COLLECTION') {
+          // Render target emoji on collection tile
+          const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
+          const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+          const targetLabel = scene.add.text(centerX, centerY, '🎯', {
+            fontSize: '24px',
+          });
+          targetLabel.setOrigin(0.5, 0.5);
+          targetLabel.setDepth(3);
+          return targetLabel;
+        } else {
+          // BOOTH subType - render booth emoji (handled in Type B section below)
+          // Continue to Type B rendering
+        }
+      } else {
+        // For other 2-tile ploppables (Dumpster), only render from primary cell
+        if (gridX !== ploppable.x || gridY !== ploppable.y) {
+          return null; // Skip rendering second cell (rendered from primary)
+        }
+      }
     }
     
     const orientation = ploppable.orientation || 0;
@@ -385,6 +427,8 @@ export class PloppableManager {
     else if (ploppable.type === 'Bench') emoji = '🪑';
     else if (ploppable.type === 'Speed Bump') emoji = '⛰️';
     else if (ploppable.type === 'Crosswalk') emoji = '🚸';
+    else if (ploppable.type === 'Parking Meter') emoji = '⏰';
+    else if (ploppable.type === 'Parking Booth') emoji = '🏪';
     
     // Handle non-oriented ploppables (Tree, Shrub, Flower Patch, Security Camera, Speed Bump, Crosswalk) - render at center, no arrow
     if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Security Camera' || ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk') {
@@ -403,6 +447,7 @@ export class PloppableManager {
       // Type A: Position along rail extremities, but inside the cell
       const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+      
       const position = this.getTypeAPosition(centerX, centerY, orientation);
       
       // Create emoji label - origin at mid-bottom for Type A (trash can)
@@ -415,7 +460,28 @@ export class PloppableManager {
     } else {
       // Type B: Central position with rotation indicator (arrow showing facing direction)
       if (size === 2) {
-        // For 2-tile ploppables, calculate center between the two cells
+        // Special handling for Parking Booth: draw booth emoji on primary tile only (no arrow, no center-between)
+        if (ploppable.type === 'Parking Booth') {
+          // Only render from primary cell (BOOTH subType)
+          if (ploppable.subType !== 'BOOTH') {
+            return null; // Collection tile renders separately (handled earlier in the function)
+          }
+          
+          // Draw booth emoji on primary cell center (not between cells, no arrow)
+          const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
+          const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+          
+          const boothLabel = scene.add.text(centerX, centerY, emoji, {
+            fontSize: '24px',
+          });
+          boothLabel.setOrigin(0.5, 0.5);
+          boothLabel.setDepth(3);
+          
+          // No arrow for Parking Booth
+          return boothLabel;
+        }
+        
+        // For other 2-tile ploppables (Dumpster), calculate center between the two cells
         // Get the second cell coordinates
         const primaryCell = { x: ploppable.x, y: ploppable.y };
         // Calculate second cell based on orientation
