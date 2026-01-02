@@ -55,23 +55,34 @@ export class PathfindingUtilities {
     }
     
     // Check if this edge is part of a parking spot border
+    // Handle both Parking Spot and Parking Meter (meters preserve the original spot's orientation)
     const cellData = gridManager.getCellData(cellX, cellY);
-    if (cellData?.ploppable?.type === 'Parking Spot') {
-      const orientation = cellData.ploppable.orientation || 0;
-      // Orientation represents which edge is missing (undrawn):
-      // 0 = missing left (edge 3) - draws edges 0,1,2
-      // 1 = missing bottom (edge 2) - draws edges 0,1,3
-      // 2 = missing top (edge 0) - draws edges 1,2,3
-      // 3 = missing right (edge 1) - draws edges 0,2,3
-      const edgesToDraw = [
-        [0, 1, 2], // orientation 0: missing left (3)
-        [0, 1, 3], // orientation 1: missing bottom (2)
-        [1, 2, 3], // orientation 2: missing top (0)
-        [0, 2, 3]  // orientation 3: missing right (1)
-      ];
-      const drawnEdges = edgesToDraw[orientation];
-      if (drawnEdges.includes(edge)) {
-        return true;
+    if (cellData?.ploppable) {
+      const isParkingSpot = cellData.ploppable.type === 'Parking Spot';
+      const isParkingMeter = cellData.ploppable.type === 'Parking Meter';
+      
+      if (isParkingSpot || isParkingMeter) {
+        // For Parking Spot, use orientation directly
+        // For Parking Meter, use parkingSpotOrientation (stores original spot orientation)
+        const orientation = isParkingSpot
+          ? (cellData.ploppable.orientation || 0)
+          : (cellData.ploppable.parkingSpotOrientation ?? cellData.ploppable.orientation ?? 0);
+        
+        // Orientation represents which edge is missing (undrawn):
+        // 0 = missing left (edge 3) - draws edges 0,1,2
+        // 1 = missing bottom (edge 2) - draws edges 0,1,3
+        // 2 = missing top (edge 0) - draws edges 1,2,3
+        // 3 = missing right (edge 1) - draws edges 0,2,3
+        const edgesToDraw = [
+          [0, 1, 2], // orientation 0: missing left (3)
+          [0, 1, 3], // orientation 1: missing bottom (2)
+          [1, 2, 3], // orientation 2: missing top (0)
+          [0, 2, 3]  // orientation 3: missing right (1)
+        ];
+        const drawnEdges = edgesToDraw[orientation];
+        if (drawnEdges.includes(edge)) {
+          return true;
+        }
       }
     }
     
@@ -88,18 +99,28 @@ export class PathfindingUtilities {
     gridManager: GridManager
   ): boolean {
     const cellData = gridManager.getCellData(cellX, cellY);
-    if (cellData?.ploppable?.type === 'Parking Spot') {
-      const orientation = cellData.ploppable.orientation || 0;
-      // Edges that are drawn (blocked) for each orientation
-      // Orientation represents which edge is MISSING (passable)
-      const drawnEdges = [
-        [0, 1, 2], // orientation 0: missing left (3) - draws top, right, bottom
-        [0, 1, 3], // orientation 1: missing bottom (2) - draws top, right, left
-        [1, 2, 3], // orientation 2: missing top (0) - draws right, bottom, left
-        [0, 2, 3]  // orientation 3: missing right (1) - draws top, bottom, left
-      ];
-      const blocked = drawnEdges[orientation];
-      return blocked.includes(edge);
+    if (cellData?.ploppable) {
+      const isParkingSpot = cellData.ploppable.type === 'Parking Spot';
+      const isParkingMeter = cellData.ploppable.type === 'Parking Meter';
+      
+      if (isParkingSpot || isParkingMeter) {
+        // For Parking Spot, use orientation directly
+        // For Parking Meter, use parkingSpotOrientation (stores original spot orientation)
+        const orientation = isParkingSpot
+          ? (cellData.ploppable.orientation || 0)
+          : (cellData.ploppable.parkingSpotOrientation ?? cellData.ploppable.orientation ?? 0);
+        
+        // Edges that are drawn (blocked) for each orientation
+        // Orientation represents which edge is MISSING (passable)
+        const drawnEdges = [
+          [0, 1, 2], // orientation 0: missing left (3) - draws top, right, bottom
+          [0, 1, 3], // orientation 1: missing bottom (2) - draws top, right, left
+          [1, 2, 3], // orientation 2: missing top (0) - draws right, bottom, left
+          [0, 2, 3]  // orientation 3: missing right (1) - draws top, bottom, left
+        ];
+        const blocked = drawnEdges[orientation];
+        return blocked.includes(edge);
+      }
     }
     return false;
   }
