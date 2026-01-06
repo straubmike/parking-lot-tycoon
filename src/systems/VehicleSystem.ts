@@ -6,6 +6,7 @@ import { PedestrianSystem } from './PedestrianSystem';
 import { PathfindingSystem, EdgeBlockedCallback, MoveCostCallback } from './PathfindingSystem';
 import { GameSystems } from '@/core/GameSystems';
 import { ParkingTimerSystem } from './ParkingTimerSystem';
+import { MessageSystem } from './MessageSystem';
 
 export class VehicleSystem {
   private vehicles: VehicleEntity[] = [];
@@ -200,7 +201,7 @@ export class VehicleSystem {
       pair.despawnerY,
       path,
       speed,
-      isPotentialParker && reservedSpot !== null
+      isPotentialParker
     );
     
     // Set reserved spot if found
@@ -219,11 +220,15 @@ export class VehicleSystem {
     // Register potential parker with rating system
     if (isPotentialParker) {
       if (reservedSpot !== null) {
-        // Found a spot - register with initial score of 100
-        GameSystems.rating.registerParker(vehicle.id, 100);
+        // Found a spot - register with initial score of 70
+        GameSystems.rating.registerParker(vehicle.id, 70);
       } else {
         // No spot available - register with initial score of 0
         GameSystems.rating.registerParker(vehicle.id, 0);
+        // Show message about not finding a spot
+        if (vehicle.name) {
+          MessageSystem.noSpotAvailable(vehicle.name);
+        }
       }
     }
   }
@@ -255,8 +260,29 @@ export class VehicleSystem {
       if (vehicle.state === 'despawning') {
         // Cancel parking timer if still active (vehicle despawned without paying at booth)
         ParkingTimerSystem.getInstance().cancelParkingTimer(vehicle.id);
-        // Finalize parker's score before removing
+        // Apply penalties and finalize parker's score before removing
         if (vehicle.isPotentialParker) {
+          // Apply -10 penalty if drove on more than 2 concrete tiles
+          if ((vehicle.concreteTileCount || 0) > 2) {
+            GameSystems.rating.updateParkerScore(vehicle.id, -10);
+          }
+          
+          // Get unfulfilled needs penalty from pedestrian (if exists)
+          if (this.pedestrianSystem) {
+            const pedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
+            if (pedestrian && pedestrian.unfulfilledNeeds && pedestrian.unfulfilledNeeds.length > 0) {
+              // Apply -10 for each unfulfilled need
+              GameSystems.rating.updateParkerScore(vehicle.id, -10 * pedestrian.unfulfilledNeeds.length);
+            }
+          }
+          
+          // Ensure score doesn't go below 0
+          const currentScore = GameSystems.rating.getParkerScore(vehicle.id);
+          if (currentScore !== undefined && currentScore < 0) {
+            // Adjust score back to 0 (add the difference)
+            GameSystems.rating.updateParkerScore(vehicle.id, -currentScore);
+          }
+          
           GameSystems.rating.finalizeParker(vehicle.id);
         }
         vehiclesToRemove.push(vehicle.id);
@@ -349,7 +375,8 @@ export class VehicleSystem {
         this.pedestrianSystem.spawnPedestrianFromVehicle(
           vehicle.id,
           vehicle.x,
-          vehicle.y
+          vehicle.y,
+          vehicle.name
         );
       }
     }
@@ -476,6 +503,9 @@ export class VehicleSystem {
       
       // Check for speed bump on new cell and adjust speed
       this.checkSpeedBump(vehicle);
+      
+      // Check for concrete tile and increment counter
+      this.checkConcreteTile(vehicle);
       return true;
     } else {
       // Move towards target
@@ -499,6 +529,9 @@ export class VehicleSystem {
         
         // Check for speed bump on new cell and adjust speed
         this.checkSpeedBump(vehicle);
+        
+        // Check for concrete tile and increment counter
+        this.checkConcreteTile(vehicle);
       }
       return false;
     }
@@ -524,6 +557,25 @@ export class VehicleSystem {
       // If vehicle is faster than speed bump limit, reduce speed
       if (vehicle.speed > this.speedBumpMaxSpeed) {
         vehicle.speed = this.speedBumpMaxSpeed;
+      }
+    }
+  }
+
+  /**
+   * Check if vehicle is on a concrete tile and increment counter
+   * Concrete tiles are identified by color 0xffffff (white)
+   * Shows a message when exceeding 2 concrete tiles (only once per vehicle)
+   */
+  private checkConcreteTile(vehicle: VehicleEntity): void {
+    const cellData = this.getCellData(vehicle.x, vehicle.y);
+    if (cellData?.color === 0xffffff) {
+      // Vehicle is on a concrete tile
+      vehicle.concreteTileCount = (vehicle.concreteTileCount || 0) + 1;
+      
+      // Show sidewalk message when exceeding threshold (only once)
+      if (vehicle.concreteTileCount === 3 && !vehicle.sidewalkMessageShown && vehicle.name) {
+        MessageSystem.droveonSidewalk(vehicle.name);
+        vehicle.sidewalkMessageShown = true;
       }
     }
   }

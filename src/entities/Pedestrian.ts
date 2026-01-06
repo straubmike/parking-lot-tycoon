@@ -2,6 +2,7 @@ import { Pedestrian } from '@/types';
 
 export class PedestrianEntity implements Pedestrian {
   id: string;
+  name?: string;
   x: number;
   y: number;
   screenX: number;
@@ -26,6 +27,7 @@ export class PedestrianEntity implements Pedestrian {
   needFulfillmentStartTime?: number;
   satisfaction?: number;
   rating?: number;
+  unfulfilledNeeds?: ('trash' | 'thirst' | 'toilet')[];
 
   constructor(
     vehicleId: string,
@@ -35,7 +37,8 @@ export class PedestrianEntity implements Pedestrian {
     destinationY: number,
     path: { x: number; y: number }[],
     speed: number,
-    respawnDuration: number
+    respawnDuration: number,
+    name?: string
   ) {
     this.id = `pedestrian-${Date.now()}-${Math.random()}`;
     this.vehicleId = vehicleId;
@@ -49,10 +52,14 @@ export class PedestrianEntity implements Pedestrian {
     this.state = 'spawning';
     this.respawnDuration = respawnDuration;
     this.respawnTimer = respawnDuration;
+    this.name = name;
     
     // Initialize personal variables
     this.satisfaction = 50; // Default satisfaction
     this.rating = 0; // Will be calculated later
+    
+    // Initialize unfulfilled needs list
+    this.unfulfilledNeeds = [];
     
     // Start at vehicle position
     this.x = vehicleX;

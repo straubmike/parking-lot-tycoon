@@ -47,6 +47,9 @@ export class DevModeScene extends BaseGameplayScene {
     // Initialize game systems for dev mode (starting budget of $10,000)
     GameSystems.resetForChallenge(10000, this.gridManager, this.gridWidth, this.gridHeight);
     
+    // Initialize the message panel
+    GameSystems.messages.initializePanel();
+    
     // Set need generation probability to 50%
     this.pedestrianSystem.setNeedGenerationProbability(0.5);
     // Set need type distribution to 25% trash, 25% thirst, 50% toilet

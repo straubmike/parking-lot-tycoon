@@ -51,6 +51,7 @@ export interface NPC {
 
 export interface Vehicle {
   id: string;
+  name?: string; // Parker's name for messages
   x: number; // Grid X position
   y: number; // Grid Y position
   screenX: number; // Screen X position (for smooth movement)
@@ -68,6 +69,8 @@ export interface Vehicle {
   reservedSpotY?: number; // Grid Y of reserved parking spot
   parkingTimer?: number; // Time remaining parked (milliseconds)
   parkingDuration?: number; // Total time to park (milliseconds)
+  concreteTileCount?: number; // Count of concrete tiles (color 0xffffff) driven on
+  sidewalkMessageShown?: boolean; // True if sidewalk message was already shown
 }
 
 export interface SpawnerDespawnerPair {
@@ -79,6 +82,7 @@ export interface SpawnerDespawnerPair {
 
 export interface Pedestrian {
   id: string;
+  name?: string; // Parker's name for messages
   x: number; // Grid X position (cell center, integer)
   y: number; // Grid Y position (cell center, integer)
   screenX: number; // Screen X position (for smooth movement)
@@ -104,6 +108,7 @@ export interface Pedestrian {
   // Personal variables for later use (lot rating, satisfaction, etc.)
   satisfaction?: number; // Satisfaction rating (0-100)
   rating?: number; // Personal rating contribution
+  unfulfilledNeeds?: ('trash' | 'thirst' | 'toilet')[]; // List of needs that couldn't be satisfied
 }
 
 export interface CellData {

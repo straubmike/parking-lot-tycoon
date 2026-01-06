@@ -4,6 +4,7 @@ import { EconomySystem } from '@/systems/EconomySystem';
 import { AppealSystem } from '@/systems/AppealSystem';
 import { SafetySystem } from '@/systems/SafetySystem';
 import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
+import { MessageSystem } from '@/systems/MessageSystem';
 import { GridManager } from './GridManager';
 
 /**
@@ -56,6 +57,13 @@ export class GameSystems {
   }
   
   /**
+   * Access the MessageSystem singleton
+   */
+  static get messages(): MessageSystem {
+    return MessageSystem.getInstance();
+  }
+  
+  /**
    * Reset all systems for a new challenge
    * Call this when starting a new challenge or entering dev mode
    * 
@@ -69,6 +77,7 @@ export class GameSystems {
     this.rating.reset();
     this.economy.reset(initialBudget);
     this.parkingTimer.reset();
+    this.messages.reset();
     if (gridManager && gridWidth !== undefined && gridHeight !== undefined) {
       this.appeal.reset(gridManager, gridWidth, gridHeight);
       this.safety.reset(gridManager, gridWidth, gridHeight);

@@ -5,6 +5,7 @@ import { PathfindingSystem, EdgeBlockedCallback } from './PathfindingSystem';
 import { NeedsSystem } from './NeedsSystem';
 import { GridManager } from '@/core/GridManager';
 import { TimeSystem } from './TimeSystem';
+import { MessageSystem } from './MessageSystem';
 
 export class PedestrianSystem {
   private pedestrians: PedestrianEntity[] = [];
@@ -131,6 +132,7 @@ export class PedestrianSystem {
 
   /**
    * Set up a need for a pedestrian and find path to fulfillment location
+   * If a need is generated but cannot be fulfilled, it's added to unfulfilledNeeds
    */
   private setupNeedForPedestrian(
     pedestrian: PedestrianEntity,
@@ -144,7 +146,24 @@ export class PedestrianSystem {
     
     const ploppable = this.findReachablePloppableForNeed(needType, startX, startY);
     if (!ploppable) {
-      return false; // No reachable ploppable found
+      // Need was generated but no reachable ploppable found - track as unfulfilled
+      if (!pedestrian.unfulfilledNeeds) {
+        pedestrian.unfulfilledNeeds = [];
+      }
+      pedestrian.unfulfilledNeeds.push(needType);
+      
+      // Show message about unfulfilled need
+      if (pedestrian.name) {
+        if (needType === 'thirst') {
+          MessageSystem.thirstUnfulfilled(pedestrian.name);
+        } else if (needType === 'toilet') {
+          MessageSystem.toiletUnfulfilled(pedestrian.name);
+        } else if (needType === 'trash') {
+          MessageSystem.trashUnfulfilled(pedestrian.name);
+        }
+      }
+      
+      return false;
     }
     
     // Set need information
@@ -169,7 +188,30 @@ export class PedestrianSystem {
       return true;
     }
     
-    return false; // Couldn't find path
+    // Couldn't find path - track as unfulfilled need
+    if (!pedestrian.unfulfilledNeeds) {
+      pedestrian.unfulfilledNeeds = [];
+    }
+    pedestrian.unfulfilledNeeds.push(needType);
+    
+    // Show message about unfulfilled need
+    if (pedestrian.name) {
+      if (needType === 'thirst') {
+        MessageSystem.thirstUnfulfilled(pedestrian.name);
+      } else if (needType === 'toilet') {
+        MessageSystem.toiletUnfulfilled(pedestrian.name);
+      } else if (needType === 'trash') {
+        MessageSystem.trashUnfulfilled(pedestrian.name);
+      }
+    }
+    
+    // Clear the need since it can't be fulfilled
+    pedestrian.currentNeed = null;
+    pedestrian.needTargetPloppableId = undefined;
+    pedestrian.needTargetX = undefined;
+    pedestrian.needTargetY = undefined;
+    
+    return false;
   }
 
   /**
@@ -178,7 +220,8 @@ export class PedestrianSystem {
   spawnPedestrianFromVehicle(
     vehicleId: string,
     vehicleX: number,
-    vehicleY: number
+    vehicleY: number,
+    vehicleName?: string
   ): void {
     // Find a random destination from available destinations that is reachable
     const destinations = this.getDestinations();
@@ -228,7 +271,8 @@ export class PedestrianSystem {
       selectedDestination.y,
       pathToDestination,
       speed,
-      respawnDuration
+      respawnDuration,
+      vehicleName
     );
     
     // Set initial screen position (cell center at vehicle)

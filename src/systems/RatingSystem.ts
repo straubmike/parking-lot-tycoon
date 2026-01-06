@@ -166,7 +166,12 @@ export class RatingSystem {
   }
   
   /**
-   * Get current day's running average rating (parker satisfaction component only, 0-100)
+   * Get current day's running average rating (parker satisfaction component only, 0-70)
+   * Score breakdown:
+   * - 70 = successful park with no issues
+   * - 60 = one penalty (drove on >2 concrete tiles OR unfulfilled need)
+   * - 50 = two penalties
+   * - 0 = unable to reserve a spot
    */
   getCurrentRating(): number {
     return this.currentRating;
@@ -174,7 +179,12 @@ export class RatingSystem {
   
   /**
    * Get composite rating including appeal and safety components
-   * Formula: 70% parker satisfaction + 15% appeal + 15% safety
+   * Formula: parker satisfaction (0-70) + appeal (0-15) + safety (0-15) = 0-100
+   * 
+   * Parker scores are directly on a 0-70 scale:
+   * - 70 = successful park with no issues
+   * - 0 = unable to reserve a spot
+   * - Penalties reduce from 70 (e.g., -10 for each issue)
    * 
    * @param gridManager - Grid manager instance
    * @param gridWidth - Grid width
@@ -182,11 +192,11 @@ export class RatingSystem {
    * @returns Composite rating (0-100)
    */
   getCompositeRating(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
-    const parkerRating = this.currentRating; // 0-100
+    const parkerRating = this.currentRating; // 0-70 scale (direct contribution)
     const appealContribution = AppealSystem.getInstance().getAppealContribution(gridManager, gridWidth, gridHeight);
     const safetyContribution = SafetySystem.getInstance().getSafetyContribution(gridManager, gridWidth, gridHeight);
     
-    return (parkerRating * 0.70) + appealContribution + safetyContribution;
+    return parkerRating + appealContribution + safetyContribution;
   }
   
   /**
@@ -203,10 +213,10 @@ export class RatingSystem {
     safety: number;
     total: number;
   } {
-    const parker = this.currentRating;
+    const parker = this.currentRating; // 0-70 scale
     const appeal = AppealSystem.getInstance().getAppealContribution(gridManager, gridWidth, gridHeight);
     const safety = SafetySystem.getInstance().getSafetyContribution(gridManager, gridWidth, gridHeight);
-    const total = (parker * 0.70) + appeal + safety;
+    const total = parker + appeal + safety;
     
     return { parker, appeal, safety, total };
   }
