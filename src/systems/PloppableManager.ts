@@ -218,6 +218,13 @@ export class PloppableManager {
       return false;
     }
     
+    // Crosswalk can only be placed on asphalt tiles
+    if (ploppableType === 'Crosswalk') {
+      if (cellData?.surfaceType !== 'asphalt') {
+        return false; // Crosswalk requires asphalt surface
+      }
+    }
+    
     // For 2-tile ploppables, also check the second cell
     if (ploppableType && this.getPloppableSize(ploppableType) === 2) {
       const ori = orientation ?? 0;

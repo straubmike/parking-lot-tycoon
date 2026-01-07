@@ -142,6 +142,32 @@ export class PathfindingSystem {
       
       // Check if we reached the goal
       if (current.x === goalX && current.y === goalY) {
+        // #region agent log
+        if (entityType === 'vehicle') {
+          const path = this.reconstructPath(current);
+          // Check which moves in the final path cross lane lines
+          const pathCrossings: Array<{fromX:number,fromY:number,toX:number,toY:number,cost:number}> = [];
+          for (let i = 0; i < path.length; i++) {
+            const from = i === 0 ? {x: startX, y: startY} : path[i-1];
+            const to = path[i];
+            const dx = to.x - from.x;
+            const dy = to.y - from.y;
+            let direction: 'north' | 'south' | 'east' | 'west';
+            if (dx > 0) direction = 'east';
+            else if (dx < 0) direction = 'west';
+            else if (dy > 0) direction = 'south';
+            else direction = 'north';
+            // Note: We can't easily check the cost here without access to gridManager
+            // But we can at least identify which moves might be problematic
+            if (Math.abs(dx) > 0 && Math.abs(dy) > 0) {
+              // Diagonal move (shouldn't happen but log it)
+            }
+            pathCrossings.push({fromX:from.x,fromY:from.y,toX:to.x,toY:to.y,cost:0});
+          }
+          fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingSystem.ts:findPath',message:'Vehicle path found',data:{startX,startY,goalX,goalY,pathLength:path.length,totalCost:current.g,pathSample:path.slice(0,8),fullPath:path,pathMoves:pathCrossings},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+          return path;
+        }
+        // #endregion
         return this.reconstructPath(current);
       }
 
@@ -169,6 +195,11 @@ export class PathfindingSystem {
         const g = current.g + 1 + moveCostPenalty;
         const h = this.heuristic(neighborX, neighborY, goalX, goalY);
         const f = g + h;
+        // #region agent log
+        if (entityType === 'vehicle' && moveCostPenalty > 0) {
+          fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingSystem.ts:findPath',message:'Path step with lane penalty',data:{fromX:current.x,fromY:current.y,toX:neighborX,toY:neighborY,direction:dir.name,moveCostPenalty,currentG:current.g,newG:g,h,f},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
+        }
+        // #endregion
 
         // Check if this path to neighbor is better than any previous one
         const existingIndex = openSet.findIndex(n => n.x === neighborX && n.y === neighborY);

@@ -1,4 +1,4 @@
-import { CellData } from '@/types';
+import { CellData, COLOR_TO_SURFACE, SurfaceType } from '@/types';
 
 /**
  * GridManager - Manages cell data and border segments for the isometric grid
@@ -230,7 +230,12 @@ export class GridManager {
           const [x, y] = key.split(',').map(Number);
           // Only load cells that fit in the current grid
           if (x >= 0 && x < this.gridWidth && y >= 0 && y < this.gridHeight) {
-            this.cellData.set(key, value as CellData);
+            const cellData = value as CellData;
+            // Migrate: if cell has color but no surfaceType, derive surfaceType from color
+            if (cellData.color !== undefined && cellData.surfaceType === undefined) {
+              cellData.surfaceType = COLOR_TO_SURFACE[cellData.color] as SurfaceType | undefined;
+            }
+            this.cellData.set(key, cellData);
           }
         });
       }

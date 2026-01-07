@@ -28,6 +28,7 @@ export class PedestrianEntity implements Pedestrian {
   satisfaction?: number;
   rating?: number;
   unfulfilledNeeds?: ('trash' | 'thirst' | 'toilet')[];
+  actualPathTiles?: { x: number; y: number }[];
 
   constructor(
     vehicleId: string,
@@ -60,6 +61,9 @@ export class PedestrianEntity implements Pedestrian {
     
     // Initialize unfulfilled needs list
     this.unfulfilledNeeds = [];
+    
+    // Initialize actual path tracking (includes starting position)
+    this.actualPathTiles = [{ x: vehicleX, y: vehicleY }];
     
     // Start at vehicle position
     this.x = vehicleX;

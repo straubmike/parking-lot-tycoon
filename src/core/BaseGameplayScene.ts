@@ -166,7 +166,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       );
     };
     
-    // Create move cost callback for pathfinding (penalizes lane line crossings)
+    // Create move cost callback for pathfinding (penalizes lane line crossings and prefers concrete for pedestrians)
     const getMoveCost = (
       fromX: number,
       fromY: number,
@@ -175,7 +175,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       direction: 'north' | 'south' | 'east' | 'west',
       entityType: 'vehicle' | 'pedestrian'
     ): number => {
-      return PathfindingUtilities.getLaneLineCrossingCost(
+      let cost = PathfindingUtilities.getLaneLineCrossingCost(
         fromX,
         fromY,
         toX,
@@ -184,6 +184,28 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         entityType,
         this.gridManager
       );
+      
+      // #region agent log
+      if (entityType === 'vehicle' && cost > 0) {
+        fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BaseGameplayScene.ts:getMoveCost',message:'Vehicle lane crossing cost applied',data:{fromX,fromY,toX,toY,direction,cost},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
+      }
+      // #endregion
+      
+      // For pedestrians, ADD cost for non-concrete tiles to encourage using sidewalks
+      // We use a penalty approach instead of discount because negative costs break A* heuristic
+      // (Manhattan distance doesn't account for discounts, causing suboptimal paths)
+      if (entityType === 'pedestrian') {
+        const targetCell = this.gridManager.getCellData(toX, toY);
+        // Concrete surfaces or tiles that behave like sidewalks (e.g., Crosswalks) are preferred
+        const isSidewalkLike = targetCell?.surfaceType === 'concrete' || targetCell?.behavesLikeSidewalk === true;
+        if (!isSidewalkLike) {
+          // Add 0.8 penalty for non-sidewalk tiles
+          // This makes concrete/crosswalk paths significantly cheaper without using negative costs
+          cost += 0.8;
+        }
+      }
+      
+      return cost;
     };
     
     // Initialize pedestrian system first (needed by vehicle system)
@@ -194,7 +216,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       () => this.getPedestrianDestinations(),
       isEdgeBlocked,
       this.gridManager,
-      0 // Default need generation probability (can be overridden by scenes)
+      0, // Default need generation probability (can be overridden by scenes)
+      getMoveCost // Pass move cost callback for concrete tile preference
     );
     
     // Initialize vehicle system (with pedestrian system reference)

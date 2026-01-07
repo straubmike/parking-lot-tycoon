@@ -1,11 +1,12 @@
 import { CellData, Ploppable } from '@/types';
 import { PedestrianEntity } from '@/entities/Pedestrian';
 import { isoToScreen } from '@/utils/isometric';
-import { PathfindingSystem, EdgeBlockedCallback } from './PathfindingSystem';
+import { PathfindingSystem, EdgeBlockedCallback, MoveCostCallback } from './PathfindingSystem';
 import { NeedsSystem } from './NeedsSystem';
 import { GridManager } from '@/core/GridManager';
 import { TimeSystem } from './TimeSystem';
 import { MessageSystem } from './MessageSystem';
+import { GameSystems } from '@/core/GameSystems';
 
 export class PedestrianSystem {
   private pedestrians: PedestrianEntity[] = [];
@@ -29,7 +30,8 @@ export class PedestrianSystem {
     getDestinations: () => { x: number; y: number }[],
     isEdgeBlocked: EdgeBlockedCallback,
     gridManager: GridManager,
-    needGenerationProbability: number = 0 // Default to 0 for backward compatibility
+    needGenerationProbability: number = 0, // Default to 0 for backward compatibility
+    getMoveCost?: MoveCostCallback // Optional move cost callback for concrete tile preference
   ) {
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
@@ -40,12 +42,13 @@ export class PedestrianSystem {
     // Initialize need type distribution (default: 50% trash, 50% thirst)
     this.needTypeDistribution = { trash: 0.5, thirst: 0.5, toilet: 0 };
     
-    // Initialize pathfinding system
+    // Initialize pathfinding system with move cost callback for concrete tile preference
     this.pathfindingSystem = new PathfindingSystem(
       gridWidth,
       gridHeight,
       getCellData,
-      isEdgeBlocked
+      isEdgeBlocked,
+      getMoveCost
     );
   }
 
@@ -416,6 +419,15 @@ export class PedestrianSystem {
                 const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
                 pedestrian.screenX = vehicleScreenPos.x;
                 pedestrian.screenY = vehicleScreenPos.y;
+                // Track final position and check concrete percentage
+                if (!pedestrian.actualPathTiles) {
+                  pedestrian.actualPathTiles = [];
+                }
+                const lastTile = pedestrian.actualPathTiles[pedestrian.actualPathTiles.length - 1];
+                if (!lastTile || lastTile.x !== pedestrian.x || lastTile.y !== pedestrian.y) {
+                  pedestrian.actualPathTiles.push({ x: pedestrian.x, y: pedestrian.y });
+                }
+                this.checkConcreteTilePercentage(pedestrian);
                 pedestrian.state = 'at_vehicle';
               }
             }
@@ -466,6 +478,15 @@ export class PedestrianSystem {
         // Reached current target
         pedestrian.screenX = targetScreenX;
         pedestrian.screenY = targetScreenY;
+        
+        // Track tile if grid position changed
+        if (pedestrian.x !== target.x || pedestrian.y !== target.y) {
+          if (!pedestrian.actualPathTiles) {
+            pedestrian.actualPathTiles = [];
+          }
+          pedestrian.actualPathTiles.push({ x: target.x, y: target.y });
+        }
+        
         pedestrian.x = target.x;
         pedestrian.y = target.y;
         pedestrian.currentPathIndex++;
@@ -482,7 +503,18 @@ export class PedestrianSystem {
         pedestrian.screenY += moveY;
         
         // Update grid position based on progress
+        const oldX = pedestrian.x;
+        const oldY = pedestrian.y;
         this.updatePedestrianGridPosition(pedestrian, target);
+        
+        // Track tile if grid position changed
+        if ((pedestrian.x !== oldX || pedestrian.y !== oldY) && pedestrian.actualPathTiles) {
+          // Check if we haven't already added this tile (avoid duplicates)
+          const lastTile = pedestrian.actualPathTiles.length > 0 ? pedestrian.actualPathTiles[pedestrian.actualPathTiles.length - 1] : null;
+          if (!lastTile || lastTile.x !== pedestrian.x || lastTile.y !== pedestrian.y) {
+            pedestrian.actualPathTiles.push({ x: pedestrian.x, y: pedestrian.y });
+          }
+        }
       }
     } else {
       // Path completed or empty, check if at destination
@@ -569,6 +601,15 @@ export class PedestrianSystem {
         const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
         pedestrian.screenX = vehicleScreenPos.x;
         pedestrian.screenY = vehicleScreenPos.y;
+        // Track final position and check concrete percentage
+        if (!pedestrian.actualPathTiles) {
+          pedestrian.actualPathTiles = [];
+        }
+        const lastTile = pedestrian.actualPathTiles[pedestrian.actualPathTiles.length - 1];
+        if (!lastTile || lastTile.x !== pedestrian.x || lastTile.y !== pedestrian.y) {
+          pedestrian.actualPathTiles.push({ x: pedestrian.x, y: pedestrian.y });
+        }
+        this.checkConcreteTilePercentage(pedestrian);
         pedestrian.state = 'at_vehicle';
       } else {
         console.warn('Pedestrian cannot find path to destination after need fulfillment');
@@ -594,6 +635,19 @@ export class PedestrianSystem {
       }
     } else if (targetType === 'vehicle') {
       if (pedestrian.x === pedestrian.vehicleX && pedestrian.y === pedestrian.vehicleY) {
+        // Track final position
+        if (!pedestrian.actualPathTiles) {
+          pedestrian.actualPathTiles = [];
+        }
+        // Add final position if not already there
+        const lastTile = pedestrian.actualPathTiles.length > 0 ? pedestrian.actualPathTiles[pedestrian.actualPathTiles.length - 1] : null;
+        if (!lastTile || lastTile.x !== pedestrian.x || lastTile.y !== pedestrian.y) {
+          pedestrian.actualPathTiles.push({ x: pedestrian.x, y: pedestrian.y });
+        }
+        
+        // Calculate concrete tile percentage and apply penalty if needed
+        this.checkConcreteTilePercentage(pedestrian);
+        
         // Reached vehicle - mark as at_vehicle so vehicle can leave
         pedestrian.state = 'at_vehicle';
       }
@@ -643,6 +697,47 @@ export class PedestrianSystem {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Check sidewalk tile percentage in pedestrian's actual path and apply penalty if < 50%
+   * Sidewalk tiles include concrete (0xffffff) and tiles with behavesLikeSidewalk (e.g., Crosswalks)
+   */
+  private checkConcreteTilePercentage(pedestrian: PedestrianEntity): void {
+    if (!pedestrian.actualPathTiles || pedestrian.actualPathTiles.length === 0) {
+      return;
+    }
+    
+    // Count sidewalk-like tiles (concrete or behavesLikeSidewalk)
+    let sidewalkTileCount = 0;
+    const uniqueTiles = new Set<string>();
+    
+    for (const tile of pedestrian.actualPathTiles) {
+      const tileKey = `${tile.x},${tile.y}`;
+      if (uniqueTiles.has(tileKey)) {
+        continue; // Skip duplicates
+      }
+      uniqueTiles.add(tileKey);
+      
+      const cellData = this.gridManager.getCellData(tile.x, tile.y);
+      // Count as sidewalk if it's concrete surface OR has behavesLikeSidewalk property (e.g., Crosswalks)
+      if (cellData?.surfaceType === 'concrete' || cellData?.behavesLikeSidewalk === true) {
+        sidewalkTileCount++;
+      }
+    }
+    
+    const totalUniqueTiles = uniqueTiles.size;
+    const sidewalkPercentage = totalUniqueTiles > 0 ? (sidewalkTileCount / totalUniqueTiles) : 0;
+    
+    // Apply penalty if less than 50% sidewalk tiles
+    if (sidewalkPercentage < 0.5 && pedestrian.name) {
+      // Show message
+      MessageSystem.insufficientSidewalk(pedestrian.name);
+      
+      // Apply -10 penalty to vehicle's rating
+      const vehicleId = pedestrian.vehicleId;
+      GameSystems.rating.updateParkerScore(vehicleId, -10);
     }
   }
 

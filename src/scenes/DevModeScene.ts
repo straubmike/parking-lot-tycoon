@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { getIsometricTilePoints } from '@/utils/isometric';
-import { Ploppable } from '@/types';
+import { Ploppable, COLOR_TO_SURFACE } from '@/types';
 import { BaseGameplayScene } from '@/core/BaseGameplayScene';
 import { GameSystems } from '@/core/GameSystems';
 import { PloppableManager } from '@/systems/PloppableManager';
@@ -533,8 +533,12 @@ export class DevModeScene extends BaseGameplayScene {
         return;
       }
       
-      // Store the color in cell data
-      this.gridManager.setCellData(gridX, gridY, { color: this.selectedColor });
+      // Store the color and surface type in cell data
+      const surfaceType = this.selectedColor !== null ? COLOR_TO_SURFACE[this.selectedColor] : undefined;
+      this.gridManager.setCellData(gridX, gridY, { 
+        color: this.selectedColor,
+        surfaceType: surfaceType
+      });
       
       // Redraw the grid
       this.redrawGrid();

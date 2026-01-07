@@ -300,13 +300,24 @@ export class MessageSystem {
   }
   
   /**
-   * Parker drove on too many concrete tiles
+   * Vehicle drove on too many concrete/sidewalk tiles
    */
   static droveonSidewalk(parkerName: string): void {
     MessageSystem.getInstance().addParkerReaction(
       parkerName,
-      "I'm driving on the sidewalk! This feels awkward.",
+      "My car is on the sidewalk! This feels awkward.",
       '😅'
+    );
+  }
+  
+  /**
+   * Pedestrian walked on insufficient concrete tiles (sidewalk complaint)
+   */
+  static insufficientSidewalk(parkerName: string): void {
+    MessageSystem.getInstance().addParkerReaction(
+      parkerName,
+      "Why is there no sidewalk to walk on here?",
+      '😤'
     );
   }
 }

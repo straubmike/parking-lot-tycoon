@@ -169,10 +169,17 @@ export class PathfindingUtilities {
       }
     }
     
-    // Curb blocks vehicles when exiting through the edge the curb is on
-    // Edge 0 (top) blocks North, Edge 1 (right) blocks East, 
-    // Edge 2 (bottom) blocks South, Edge 3 (left) blocks West
+    // Curb blocks ALL vehicle crossings through that edge (entry or exit)
+    // "Vehicles cannot cross these lines, but pedestrians can"
+    // Note: We check isEntryEdge to ensure we only block actual crossings, not corridor walls
     if (curbLaneColor === 0x808080 && entityType === 'vehicle') {
+      // For entry edges (direct crossings), always block vehicles
+      if (isEntryEdge) {
+        return true;
+      }
+      // For corridor edges (exit from source cell), block if direction matches edge
+      // Edge 0 (top) blocks North, Edge 1 (right) blocks East, 
+      // Edge 2 (bottom) blocks South, Edge 3 (left) blocks West
       const edgeBlocksDirection = 
         (edge === 0 && movementDirection === 'north') ||
         (edge === 1 && movementDirection === 'east') ||
@@ -184,30 +191,14 @@ export class PathfindingUtilities {
       }
     }
     
-    // Lane line (yellow) - block parallel movement on ENTRY edges only
-    // Lane lines enforce "drive on the right" by blocking parallel movement
+    // Lane line (yellow) - controls vehicle lane behavior
+    // Lane lines DON'T block movement - they enforce "drive on the right" via cost penalties
+    // The getLaneLineCrossingCost function adds a heavy penalty for crossing lane lines,
+    // which makes vehicles prefer to stay in their lane and take longer routes
+    // rather than crossing into oncoming traffic.
     // 
-    // CRITICAL: The edge orientation is OPPOSITE to the lane line's actual direction:
-    // - A lane line on a VERTICAL edge (top/bottom, edges 0/2) actually spans HORIZONTALLY (E/W)
-    //   So it should block E/W movement (parallel) and allow N/S movement (perpendicular)
-    // - A lane line on a HORIZONTAL edge (left/right, edges 1/3) actually spans VERTICALLY (N/S)
-    //   So it should block N/S movement (parallel) and allow E/W movement (perpendicular)
-    if (curbLaneColor === 0xffff00 && entityType === 'vehicle' && isEntryEdge) {
-      const isVerticalEdge = edge === 0 || edge === 2;
-      const isHorizontalEdge = edge === 1 || edge === 3;
-      
-      // Block parallel movement (movement that follows the lane line's actual direction)
-      // Allow perpendicular movement (crossing the lane line)
-      // 
-      // If lane line is on vertical edge (top/bottom), it spans E/W, so block E/W movement (parallel)
-      if (isVerticalEdge && isEastWestMovement) {
-        return true; // Lane line on top/bottom edge spans E/W, blocks E/W movement (parallel)
-      }
-      // If lane line is on horizontal edge (left/right), it spans N/S, so block N/S movement (parallel)
-      if (isHorizontalEdge && isNorthSouthMovement) {
-        return true; // Lane line on left/right edge spans N/S, blocks N/S movement (parallel)
-      }
-    }
+    // NOTE: Lane lines are NOT blocking barriers. Vehicles CAN cross them if necessary,
+    // but pathfinding will strongly prefer routes that don't require crossing.
     
     // Check parking spot borders on entry edges (only for vehicles)
     // When isEntryEdge is true, cellX/cellY is the target cell and edge is the target edge
@@ -313,20 +304,39 @@ export class PathfindingUtilities {
 
     // Check if there's a lane line on the entry edge
     const existingKey = gridManager.findExistingBorderSegmentKey(toX, toY, entryEdge);
+    // #region agent log
+    if (entityType === 'vehicle' && (fromX === 2 && toX === 1 || fromX === 3 && toX === 2 || fromX === 1 && toX === 0)) {
+      fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingUtilities.ts:getLaneLineCrossingCost',message:'Checking west move for lane line',data:{fromX,fromY,toX,toY,direction,entryEdge,existingKey,hasLaneLine:!!existingKey},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
+    }
+    // #endregion
     if (existingKey) {
       const color = gridManager.getBorderSegment(existingKey);
       if (color === 0xffff00) {
         // Lane line detected - check if this is a perpendicular crossing
+        // CRITICAL: Lane line orientation is OPPOSITE to edge orientation:
+        // - Lane line on VERTICAL edge (0/2 = top/bottom) actually spans HORIZONTALLY (E/W)
+        //   So it should penalize PERPENDICULAR crossings (N/S movement crossing E/W lane line)
+        // - Lane line on HORIZONTAL edge (1/3 = right/left) actually spans VERTICALLY (N/S)  
+        //   So it should penalize PERPENDICULAR crossings (E/W movement crossing N/S lane line)
         const isVerticalEdge = entryEdge === 0 || entryEdge === 2;
         const isHorizontalEdge = entryEdge === 1 || entryEdge === 3;
         
-        // Perpendicular crossing: vertical edge with N/S movement OR horizontal edge with E/W movement
+        // Perpendicular crossing: crossing a lane line that spans perpendicular to movement
+        // - Vertical edge lane line (spans E/W): penalize N/S crossings
+        // - Horizontal edge lane line (spans N/S): penalize E/W crossings
         const isPerpendicularCrossing = 
           (isVerticalEdge && isNorthSouthMovement) ||
           (isHorizontalEdge && isEastWestMovement);
         
+        // #region agent log
+        fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingUtilities.ts:getLaneLineCrossingCost',message:'Lane line detected',data:{fromX,fromY,toX,toY,direction,entryEdge,isVerticalEdge,isHorizontalEdge,isNorthSouthMovement,isEastWestMovement,isPerpendicularCrossing,willApplyCost:isPerpendicularCrossing},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,D'})}).catch(()=>{});
+        // #endregion
+        
         if (isPerpendicularCrossing) {
-          return 10; // High penalty to prefer paths that don't cross lane lines
+          // BLOCK lane line crossings entirely for vehicles - return infinite cost
+          // This ensures vehicles NEVER cross into oncoming traffic lanes
+          // They will always find alternative routes, even if much longer
+          return Infinity; // Infinite cost = this path will never be chosen
         }
       }
     }

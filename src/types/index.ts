@@ -109,11 +109,42 @@ export interface Pedestrian {
   satisfaction?: number; // Satisfaction rating (0-100)
   rating?: number; // Personal rating contribution
   unfulfilledNeeds?: ('trash' | 'thirst' | 'toilet')[]; // List of needs that couldn't be satisfied
+  actualPathTiles?: { x: number; y: number }[]; // Actual tiles walked on (for concrete percentage calculation)
 }
+
+/**
+ * Surface types for tiles - determines pathfinding behavior and visual appearance
+ */
+export type SurfaceType = 'concrete' | 'asphalt' | 'gravel' | 'dirt' | 'grass';
+
+/**
+ * Mapping of surface types to their corresponding colors
+ */
+export const SURFACE_COLORS: Record<SurfaceType, number> = {
+  concrete: 0xffffff,  // White
+  asphalt: 0x2a2a2a,   // Dark gray
+  gravel: 0x808080,    // Gray
+  dirt: 0x8b4513,      // Brown
+  grass: 0x228b22,     // Green
+};
+
+/**
+ * Reverse mapping: color to surface type
+ */
+export const COLOR_TO_SURFACE: Record<number, SurfaceType> = {
+  0xffffff: 'concrete',
+  0x2a2a2a: 'asphalt',
+  0x808080: 'gravel',
+  0x8b4513: 'dirt',
+  0x228b22: 'grass',
+};
 
 export interface CellData {
   // Visual representation
   color?: number;
+  
+  // Surface material type (more reliable than color for game logic)
+  surfaceType?: SurfaceType;
   
   // Game entity (if ploppable exists on this cell)
   ploppable?: Ploppable;

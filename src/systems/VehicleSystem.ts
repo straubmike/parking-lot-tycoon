@@ -161,6 +161,20 @@ export class VehicleSystem {
       'vehicle'
     );
     
+    // #region agent log
+    if (isPotentialParker && reservedSpot) {
+      // Check for lane crossings in the complete path
+      const laneCrossings: Array<{fromX:number,fromY:number,toX:number,toY:number}> = [];
+      for (let i = 0; i < path.length; i++) {
+        const from = i === 0 ? {x: pair.spawnerX, y: pair.spawnerY} : path[i-1];
+        const to = path[i];
+        // Check if this move crosses a lane line by checking edges between cells
+        // This is a simplified check - we'd need full edge checking for accuracy
+      }
+      fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VehicleSystem.ts:spawnVehicle',message:'Vehicle pathfinding to parking spot',data:{spawnerX:pair.spawnerX,spawnerY:pair.spawnerY,reservedSpotX:reservedSpot.x,reservedSpotY:reservedSpot.y,pathLength:path.length,fullPath:path,laneCrossings},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,E'})}).catch(()=>{});
+    }
+    // #endregion
+    
     // If no path found and we reserved a spot, unreserve it and try for despawner
     if (path.length === 0 && reservedSpot) {
       this.unreserveParkingSpot(reservedSpot.x, reservedSpot.y);
@@ -562,14 +576,17 @@ export class VehicleSystem {
   }
 
   /**
-   * Check if vehicle is on a concrete tile and increment counter
-   * Concrete tiles are identified by color 0xffffff (white)
+   * Check if vehicle is on a concrete/sidewalk tile and increment counter
+   * Concrete tiles are identified by surfaceType 'concrete'
+   * Crosswalks (behavesLikeSidewalk) are exempt - they're designed for vehicle crossing
    * Shows a message when exceeding 2 concrete tiles (only once per vehicle)
    */
   private checkConcreteTile(vehicle: VehicleEntity): void {
     const cellData = this.getCellData(vehicle.x, vehicle.y);
-    if (cellData?.color === 0xffffff) {
-      // Vehicle is on a concrete tile
+    // Check for concrete surface but exempt crosswalks (behavesLikeSidewalk)
+    // Crosswalks are meant to be driven on, so they shouldn't count as sidewalk violations
+    if (cellData?.surfaceType === 'concrete' && !cellData?.behavesLikeSidewalk) {
+      // Vehicle is on a concrete tile (not a crosswalk)
       vehicle.concreteTileCount = (vehicle.concreteTileCount || 0) + 1;
       
       // Show sidewalk message when exceeding threshold (only once)
