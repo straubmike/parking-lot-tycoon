@@ -5,13 +5,21 @@ import { SafetySystem } from './SafetySystem';
 
 /**
  * RatingSystem - Singleton that manages lot ratings based on parker satisfaction
- * 
- * Tracks parker scores throughout their lifecycle:
- * 1. registerParker() - Called when potential parker spawns
- * 2. updateParkerScore() - Called as events unfold (pedestrian activities, etc.)
+ *
+ * RATING FORMULA (for min_rating win conditions and tuning):
+ * - Parker component: 0–70. Base 70 when a spot is found; 0 when no spot.
+ *   Penalties: −10 each for (1) no spot [score stays 0], (2) driving on >2 concrete tiles,
+ *   (3) each unfulfilled need. So: parker = 70 − (10 × penalty count), clamped to 0.
+ * - Appeal component: 0–15 from ploppables and cell coverage (AppealSystem).
+ * - Safety component: 0–15 from safety ploppables and coverage (SafetySystem).
+ * - Total: parker + appeal + safety = 0–100.
+ *
+ * Lifecycle:
+ * 1. registerParker() - Called when potential parker spawns (70 if spot, 0 if no spot)
+ * 2. updateParkerScore() - Called as events unfold (concrete, unfulfilled needs, etc.)
  * 3. finalizeParker() - Called when parker leaves, locks score into daily totals
- * 
- * Rating is calculated at 11:59 PM and displayed at midnight
+ *
+ * Rating is calculated at 11:59 PM and displayed at midnight.
  */
 export class RatingSystem {
   private static instance: RatingSystem;
@@ -31,6 +39,8 @@ export class RatingSystem {
   
   // Track the current day to filter parkers by day
   private currentDay: number = 0;
+  
+  private debugLogParkerFinalization: boolean = false;
   
   private constructor() {}
   
@@ -96,6 +106,9 @@ export class RatingSystem {
   finalizeParker(vehicleId: string): void {
     const parkerData = this.activeParkers.get(vehicleId);
     if (parkerData !== undefined) {
+      if (this.debugLogParkerFinalization) {
+        console.debug('[RatingSystem] Parker finalized', { vehicleId, finalScore: parkerData.score });
+      }
       // Get current day from TimeSystem to ensure accuracy
       const currentDay = TimeSystem.getInstance().getCurrentDay();
       // Only finalize parkers from the current day
@@ -105,6 +118,11 @@ export class RatingSystem {
       this.activeParkers.delete(vehicleId);
       this.recalculateCurrentRating();
     }
+  }
+
+  /** Enable dev-only logging of final score when a parker is finalized (for tuning min_rating). */
+  setDebugLogParkerFinalization(enabled: boolean): void {
+    this.debugLogParkerFinalization = enabled;
   }
   
   /**

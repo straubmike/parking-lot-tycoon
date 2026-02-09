@@ -57,7 +57,9 @@ export class MessageSystem {
   private readonly displayMessages: number = 8; // Max messages to display at once
   private messageContainer: HTMLElement | null = null;
   private messageIdCounter: number = 0;
-  
+  private tutorialContainer: HTMLElement | null = null;
+  private tutorialOkButton: HTMLButtonElement | null = null;
+
   private constructor() {}
   
   static getInstance(): MessageSystem {
@@ -89,6 +91,17 @@ export class MessageSystem {
     messagesPanel.id = 'messages-panel';
     messagesPanel.innerHTML = `
       <div class="section-title" style="margin-top: 0; margin-bottom: 10px;">Messages</div>
+      <div id="tutorial-step-container" style="
+        display: none;
+        margin-bottom: 15px;
+        padding: 12px;
+        background: #1a1a1a;
+        border: 1px solid #4a4a4a;
+        border-radius: 4px;
+      ">
+        <div id="tutorial-step-text" style="color: #ddd; font-size: 13px; line-height: 1.5; margin-bottom: 12px;"></div>
+        <button type="button" id="tutorial-ok-button" class="action-button" style="margin-bottom: 0;">OK</button>
+      </div>
       <div id="messages-container" style="
         height: 200px;
         overflow-y: auto;
@@ -101,12 +114,43 @@ export class MessageSystem {
         line-height: 1.4;
       "></div>
     `;
-    
+
     // Insert at the beginning of the right panel
     rightPanel.insertBefore(messagesPanel, rightPanel.firstChild);
-    
+
     this.messageContainer = document.getElementById('messages-container');
+    this.tutorialContainer = document.getElementById('tutorial-step-container');
+    this.tutorialOkButton = document.getElementById('tutorial-ok-button') as HTMLButtonElement | null;
     this.renderMessages();
+  }
+
+  /**
+   * Show a single tutorial step with message and OK button. Hides the normal messages list.
+   * When OK is clicked, onOk is called and the tutorial UI is hidden (call hideTutorialStep from onOk if needed).
+   */
+  showTutorialStep(text: string, onOk: () => void): void {
+    if (!this.tutorialContainer || !this.tutorialOkButton) return;
+    const textEl = document.getElementById('tutorial-step-text');
+    const listEl = document.getElementById('messages-container');
+    if (textEl) textEl.textContent = text;
+    if (this.tutorialContainer) this.tutorialContainer.style.display = 'block';
+    if (listEl) listEl.style.display = 'none';
+
+    const handler = (): void => {
+      this.tutorialOkButton?.removeEventListener('click', handler);
+      if (this.tutorialContainer) this.tutorialContainer.style.display = 'none';
+      const list = document.getElementById('messages-container');
+      if (list) list.style.display = 'block';
+      onOk();
+    };
+    this.tutorialOkButton.addEventListener('click', handler);
+  }
+
+  /** Hide the tutorial step UI and show the normal messages list. */
+  hideTutorialStep(): void {
+    if (this.tutorialContainer) this.tutorialContainer.style.display = 'none';
+    const list = document.getElementById('messages-container');
+    if (list) list.style.display = 'block';
   }
   
   /**

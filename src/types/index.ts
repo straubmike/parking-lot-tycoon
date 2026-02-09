@@ -10,15 +10,44 @@ export interface Challenge {
   id: string;
   name: string;
   description: string;
+  /** Optional subline (e.g. "Playable grid: 10×10") shown on its own line with distinct style */
+  descriptionSubline?: string;
+  /** Optional heading for win conditions (e.g. "Win conditions by day 3:") */
+  winConditionsHeading?: string;
   lotSize: { width: number; height: number };
   budget: number;
   winConditions: WinCondition[];
+  /** Optional: vehicle spawn interval in ms when no schedule (default from VehicleSystem) */
+  vehicleSpawnIntervalMs?: number;
+  /**
+   * Optional: time-of-day spawn schedule. Windows in game minutes (0-1439).
+   * Outside all windows, vehicleSpawnIntervalMs or a high default is used.
+   */
+  vehicleSpawnSchedule?: Array<{ startGameMinutes: number; endGameMinutes: number; spawnIntervalMs: number }>;
+  /** Optional: min pedestrian respawn duration at de/respawner in real-time ms (1 game min = 1 real sec; 8 game hrs = 480_000 ms) */
+  pedestrianRespawnMinMs?: number;
+  /** Optional: max pedestrian respawn duration at de/respawner in real-time ms */
+  pedestrianRespawnMaxMs?: number;
+  /** Optional: weighted respawn bands (e.g. 50% short 5–10 min, 50% long 45 min). Weights should sum to 1. Overrides min/max when set. */
+  pedestrianRespawnBands?: Array<{ weight: number; minMs: number; maxMs: number }>;
+  /** Optional: probability (0-1) that a pedestrian generates a need */
+  needGenerationProbability?: number;
+  /** Optional: distribution of need types (must sum to 1). Omit a type or set 0 to disable. */
+  needTypeDistribution?: Partial<Record<'trash' | 'thirst' | 'toilet', number>>;
+  /** Optional: probability (0-1) that driver exits vehicle (spawns pedestrian). Default 1. Lower = "stay in car" (e.g. Drive-In). */
+  driverExitsVehicleProbability?: number;
+  /** Optional: URL path to preload grid JSON (e.g. "/learninglot.json"). When set, scene loads this grid after creating the scene. */
+  initialGridPath?: string;
 }
 
 export interface WinCondition {
-  type: 'profit' | 'rating' | 'time' | 'custom';
+  type: 'profit' | 'rating' | 'time' | 'custom' | 'min_rating' | 'min_parking_spots' | 'required_ploppables';
   value: number;
   description: string;
+  /** For required_ploppables: ploppable type name (e.g. "Trash Can") */
+  ploppableType?: string;
+  /** For required_ploppables: minimum count */
+  ploppableCount?: number;
 }
 
 export interface ParkingLot {
@@ -71,6 +100,8 @@ export interface Vehicle {
   parkingDuration?: number; // Total time to park (milliseconds)
   concreteTileCount?: number; // Count of concrete tiles (color 0xffffff) driven on
   sidewalkMessageShown?: boolean; // True if sidewalk message was already shown
+  /** When true, we spawned a pedestrian for this vehicle (wait for at_vehicle to leave). When false, driver stayed in car (leave when timer expires). */
+  pedestrianSpawned?: boolean;
 }
 
 export interface SpawnerDespawnerPair {

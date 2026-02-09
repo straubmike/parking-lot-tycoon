@@ -1,4 +1,8 @@
-// Global game state management
+/**
+ * Global game state (optional legacy/overlay).
+ * Challenge progress and unlocks are persisted via ProgressManager (localStorage).
+ * Money and rating are held by EconomySystem and RatingSystem.
+ */
 export class GameState {
   private static currentChallenge: string | null = null;
   private static money: number = 0;

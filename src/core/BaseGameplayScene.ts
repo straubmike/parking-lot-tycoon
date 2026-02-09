@@ -10,6 +10,7 @@ import { VehicleSystem } from '@/systems/VehicleSystem';
 import { PedestrianSystem } from '@/systems/PedestrianSystem';
 import { GameSystems } from './GameSystems';
 import { Ploppable } from '@/types';
+import { setGameUIVisibility } from '@/utils/menuVisibility';
 
 /**
  * BaseGameplayScene - Base class for gameplay scenes (dev mode, challenges, etc.)
@@ -53,6 +54,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected vehicleSpawnerLabels: Phaser.GameObjects.Text[] = [];
   protected ploppableLabels: Phaser.GameObjects.Text[] = [];
 
+  /** When false, vehicle/pedestrian spawner emojis and permanent "P" labels are not drawn (challenge mode). */
+  protected showDevOnlyCellLabels: boolean = true;
+
   constructor(config: string | Phaser.Types.Scenes.SettingsConfig, gridWidth: number, gridHeight?: number) {
     super(config);
     this.gridWidth = gridWidth;
@@ -60,6 +64,11 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   }
 
   create(): void {
+    setGameUIVisibility(true);
+    // Allow scene data to override grid dimensions (e.g. from menu when starting a challenge)
+    const data = this.scene.settings.data as Record<string, unknown> | undefined;
+    if (data && typeof data.gridWidth === 'number') this.gridWidth = data.gridWidth;
+    if (data && typeof data.gridHeight === 'number') this.gridHeight = data.gridHeight;
     // Initialize grid manager
     this.gridManager = new GridManager(this.gridWidth, this.gridHeight);
     
@@ -406,9 +415,10 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   }
 
   /**
-   * Render permanent labels
+   * Render permanent labels ("P" on permanent cells). Skipped when showDevOnlyCellLabels is false (challenge mode).
    */
   protected renderPermanentLabels(): void {
+    if (!this.showDevOnlyCellLabels) return;
     for (let x = 0; x < this.gridWidth; x++) {
       for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);
@@ -428,9 +438,10 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   }
 
   /**
-   * Render spawners and despawners
+   * Render spawners and despawners (🚗/🎯 on vehicle cells, 🚶 on pedestrian spawner cells). Skipped when showDevOnlyCellLabels is false (challenge mode).
    */
   protected renderSpawners(): void {
+    if (!this.showDevOnlyCellLabels) return;
     for (let x = 0; x < this.gridWidth; x++) {
       for (let y = 0; y < this.gridHeight; y++) {
         const cellData = this.gridManager.getCellData(x, y);

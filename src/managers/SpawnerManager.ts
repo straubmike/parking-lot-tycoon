@@ -139,69 +139,67 @@ export class SpawnerManager {
   }
 
   /**
-   * Rebuild spawner-despawner pairs from grid data
-   * Uses a simple nearest-neighbor approach to pair spawners with despawners
+   * Rebuild spawner-despawner pairs from grid data.
+   * If explicitPairs is provided (e.g. from loaded JSON), those pairs are used so spawner A only paths to despawner A.
+   * Otherwise uses nearest-neighbor to pair spawners with despawners.
    */
   static rebuildSpawnerPairsFromGrid(
     gridManager: GridManager,
     gridWidth: number,
     gridHeight: number,
     vehicleSystem: VehicleSystem,
-    pedestrianSystem: PedestrianSystem
+    pedestrianSystem: PedestrianSystem,
+    explicitPairs?: Array<[number, number, number, number]>
   ): void {
-    // Clear existing pairs and vehicles
     vehicleSystem.clearVehicles();
-    
-    // Find all spawners and despawners
-    const spawners: { x: number; y: number }[] = [];
-    const despawners: { x: number; y: number }[] = [];
-    
-    for (let x = 0; x < gridWidth; x++) {
-      for (let y = 0; y < gridHeight; y++) {
-        const cellData = gridManager.getCellData(x, y);
-        if (cellData?.vehicleSpawner) {
-          spawners.push({ x, y });
-        }
-        if (cellData?.vehicleDespawner) {
-          despawners.push({ x, y });
+
+    if (explicitPairs?.length) {
+      for (const [spawnerX, spawnerY, despawnerX, despawnerY] of explicitPairs) {
+        vehicleSystem.addSpawnerDespawnerPair({
+          spawnerX,
+          spawnerY,
+          despawnerX,
+          despawnerY
+        });
+      }
+    } else {
+      const spawners: { x: number; y: number }[] = [];
+      const despawners: { x: number; y: number }[] = [];
+
+      for (let x = 0; x < gridWidth; x++) {
+        for (let y = 0; y < gridHeight; y++) {
+          const cellData = gridManager.getCellData(x, y);
+          if (cellData?.vehicleSpawner) spawners.push({ x, y });
+          if (cellData?.vehicleDespawner) despawners.push({ x, y });
         }
       }
-    }
-    
-    // Pair each spawner with the nearest despawner
-    const usedDespawners = new Set<string>();
-    
-    spawners.forEach(spawner => {
-      let nearestDespawner: { x: number; y: number } | null = null;
-      let minDistance = Infinity;
-      
-      for (const despawner of despawners) {
-        const key = `${despawner.x},${despawner.y}`;
-        if (!usedDespawners.has(key)) {
-          // Calculate Manhattan distance
-          const distance = Math.abs(spawner.x - despawner.x) + Math.abs(spawner.y - despawner.y);
-          if (distance < minDistance) {
-            minDistance = distance;
-            nearestDespawner = { x: despawner.x, y: despawner.y };
+
+      const usedDespawners = new Set<string>();
+      spawners.forEach(spawner => {
+        let nearest: { x: number; y: number } | null = null;
+        let minDist = Infinity;
+        for (const d of despawners) {
+          const key = `${d.x},${d.y}`;
+          if (usedDespawners.has(key)) continue;
+          const dist = Math.abs(spawner.x - d.x) + Math.abs(spawner.y - d.y);
+          if (dist < minDist) {
+            minDist = dist;
+            nearest = d;
           }
         }
-      }
-      
-      if (nearestDespawner !== null && nearestDespawner !== undefined) {
-        const pair: SpawnerDespawnerPair = {
-          spawnerX: spawner.x,
-          spawnerY: spawner.y,
-          despawnerX: nearestDespawner.x,
-          despawnerY: nearestDespawner.y
-        };
-        vehicleSystem.addSpawnerDespawnerPair(pair);
-        usedDespawners.add(`${nearestDespawner.x},${nearestDespawner.y}`);
-      }
-    });
-    
-    // Rebuild pedestrian spawners
+        if (nearest) {
+          usedDespawners.add(`${nearest.x},${nearest.y}`);
+          vehicleSystem.addSpawnerDespawnerPair({
+            spawnerX: spawner.x,
+            spawnerY: spawner.y,
+            despawnerX: nearest.x,
+            despawnerY: nearest.y
+          });
+        }
+      });
+    }
+
     pedestrianSystem.clearPedestrians();
-    
     for (let x = 0; x < gridWidth; x++) {
       for (let y = 0; y < gridHeight; y++) {
         const cellData = gridManager.getCellData(x, y);

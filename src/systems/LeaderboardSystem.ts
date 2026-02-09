@@ -10,7 +10,17 @@ export interface LeaderboardEntry {
 }
 
 export class LeaderboardSystem {
+  private static instance: LeaderboardSystem;
   private entries: LeaderboardEntry[] = [];
+
+  static getInstance(): LeaderboardSystem {
+    if (!LeaderboardSystem.instance) {
+      LeaderboardSystem.instance = new LeaderboardSystem();
+    }
+    return LeaderboardSystem.instance;
+  }
+
+  private constructor() {}
 
   addEntry(entry: LeaderboardEntry): void {
     this.entries.push(entry);
@@ -35,9 +45,13 @@ export class LeaderboardSystem {
   }
 
   loadFromLocalStorage(): void {
-    const saved = localStorage.getItem('parking-lot-leaderboard');
-    if (saved) {
-      this.entries = JSON.parse(saved);
+    try {
+      const saved = localStorage.getItem('parking-lot-leaderboard');
+      if (saved) {
+        this.entries = JSON.parse(saved);
+      }
+    } catch {
+      this.entries = [];
     }
   }
 }

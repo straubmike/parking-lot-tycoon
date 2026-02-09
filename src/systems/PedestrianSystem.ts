@@ -13,8 +13,9 @@ export class PedestrianSystem {
   private destinations: Set<string> = new Set(); // Key: `${destinationX},${destinationY}` - destinations (de/respawners)
   private readonly minSpeed: number = 20; // Minimum pixels per second
   private readonly maxSpeed: number = 40; // Maximum pixels per second
-  private readonly minRespawnDuration: number = 5000; // Minimum respawn time (5 seconds)
-  private readonly maxRespawnDuration: number = 15000; // Maximum respawn time (15 seconds)
+  private minRespawnDuration: number = 5000;
+  private maxRespawnDuration: number = 15000;
+  private respawnBands: Array<{ weight: number; minMs: number; maxMs: number }> = [];
   private gridWidth: number;
   private gridHeight: number;
   private getDestinations: () => { x: number; y: number }[]; // Get all destination spawners
@@ -50,6 +51,39 @@ export class PedestrianSystem {
       isEdgeBlocked,
       getMoveCost
     );
+  }
+
+  /**
+   * Set respawn duration range in ms (real-time). Default 5000–15000. Ignored when respawn bands are set.
+   */
+  setRespawnDurationMs(minMs: number, maxMs: number): void {
+    this.minRespawnDuration = Math.max(1000, minMs);
+    this.maxRespawnDuration = Math.max(this.minRespawnDuration, maxMs);
+  }
+
+  /**
+   * Set weighted respawn bands (e.g. 50% short, 50% long). Weights should sum to 1. Overrides min/max when non-empty.
+   */
+  setRespawnBands(bands: Array<{ weight: number; minMs: number; maxMs: number }>): void {
+    this.respawnBands = bands.filter(b => b.weight > 0 && b.maxMs >= b.minMs);
+  }
+
+  private pickRespawnDurationMs(): number {
+    if (this.respawnBands.length > 0) {
+      const r = Math.random();
+      let cumulative = 0;
+      for (const band of this.respawnBands) {
+        cumulative += band.weight;
+        if (r < cumulative) {
+          const span = Math.max(0, band.maxMs - band.minMs);
+          return band.minMs + Math.random() * span;
+        }
+      }
+      const last = this.respawnBands[this.respawnBands.length - 1];
+      return last.minMs + Math.random() * Math.max(0, last.maxMs - last.minMs);
+    }
+    const span = Math.max(0, this.maxRespawnDuration - this.minRespawnDuration);
+    return this.minRespawnDuration + Math.random() * span;
   }
 
   /**
@@ -261,10 +295,9 @@ export class PedestrianSystem {
       return;
     }
     
-    // Random speed and respawn duration
+    // Random speed and respawn duration (bands override min/max)
     const speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
-    const respawnDuration = this.minRespawnDuration + 
-      Math.random() * (this.maxRespawnDuration - this.minRespawnDuration);
+    const respawnDuration = this.pickRespawnDurationMs();
     
     const pedestrian = new PedestrianEntity(
       vehicleId,

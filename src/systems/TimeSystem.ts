@@ -12,7 +12,8 @@ export class TimeSystem {
   private realTimeAccumulator: number = 0;
   private dayJustChanged: boolean = false;
   private ratingJustFinalized: boolean = false;
-  
+  private paused: boolean = false;
+
   private constructor() {}
   
   static getInstance(): TimeSystem {
@@ -27,6 +28,7 @@ export class TimeSystem {
    * @param delta - Real time elapsed in milliseconds
    */
   update(delta: number): void {
+    if (this.paused) return;
     const previousMinutes = this.gameMinutes;
     this.realTimeAccumulator += delta;
     
@@ -136,6 +138,15 @@ export class TimeSystem {
     return false;
   }
   
+  /** Pause or unpause the game clock (e.g. during tutorial). */
+  setPaused(p: boolean): void {
+    this.paused = p;
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+
   /**
    * Reset time system to initial state (Day 0, 12:00 AM)
    */
@@ -145,6 +156,7 @@ export class TimeSystem {
     this.realTimeAccumulator = 0;
     this.dayJustChanged = false;
     this.ratingJustFinalized = false;
+    this.paused = false;
   }
 }
 

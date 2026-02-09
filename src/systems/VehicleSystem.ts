@@ -12,7 +12,10 @@ export class VehicleSystem {
   private vehicles: VehicleEntity[] = [];
   private spawnerDespawnerPairs: SpawnerDespawnerPair[] = [];
   private spawnTimers: Map<string, number> = new Map(); // Key: `${spawnerX},${spawnerY}`, Value: time until next spawn
-  private readonly spawnInterval: number = 3000; // Spawn every 3 seconds (constant for now)
+  private spawnInterval: number = 3000; // Fallback when no callback
+  private getSpawnIntervalMsCallback?: () => number;
+  private driverExitsVehicleProbability: number = 1;
+  private spawnPaused: boolean = false;
   private readonly minSpeed: number = 30; // Minimum pixels per second
   private readonly maxSpeed: number = 60; // Maximum pixels per second
   private readonly speedBumpMaxSpeed: number = 30; // Maximum speed on speed bump (pixels per second)
@@ -52,13 +55,39 @@ export class VehicleSystem {
   }
 
   /**
+   * Set spawn interval in ms (e.g. from challenge config). Used when no schedule callback is set.
+   */
+  setSpawnIntervalMs(ms: number): void {
+    this.spawnInterval = Math.max(500, ms);
+  }
+
+  /**
+   * Set callback that returns current spawn interval (e.g. from time-of-day schedule). Takes precedence over setSpawnIntervalMs.
+   */
+  setGetSpawnIntervalMs(fn: () => number): void {
+    this.getSpawnIntervalMsCallback = fn;
+  }
+
+  private getCurrentSpawnIntervalMs(): number {
+    const ms = this.getSpawnIntervalMsCallback ? this.getSpawnIntervalMsCallback() : this.spawnInterval;
+    return Math.max(500, ms);
+  }
+
+  /**
+   * Set probability (0-1) that driver exits vehicle and spawns a pedestrian. Default 1. Lower = "stay in car".
+   */
+  setDriverExitsVehicleProbability(p: number): void {
+    this.driverExitsVehicleProbability = Math.max(0, Math.min(1, p));
+  }
+
+  /**
    * Register a spawner-despawner pair
    */
   addSpawnerDespawnerPair(pair: SpawnerDespawnerPair): void {
     this.spawnerDespawnerPairs.push(pair);
     const key = `${pair.spawnerX},${pair.spawnerY}`;
     // Initialize spawn timer with some variance
-    this.spawnTimers.set(key, this.spawnInterval + Math.random() * 1000);
+    this.spawnTimers.set(key, this.getCurrentSpawnIntervalMs() + Math.random() * 1000);
   }
 
   /**
@@ -81,6 +110,11 @@ export class VehicleSystem {
       p => (p.spawnerX === cellX && p.spawnerY === cellY) ||
            (p.despawnerX === cellX && p.despawnerY === cellY)
     ) || null;
+  }
+
+  /** Get all spawner-despawner pairs (for serialization / export). */
+  getSpawnerDespawnerPairs(): SpawnerDespawnerPair[] {
+    return [...this.spawnerDespawnerPairs];
   }
 
   /**
@@ -247,12 +281,18 @@ export class VehicleSystem {
     }
   }
 
+  /** Pause vehicle spawning (e.g. during tutorial). */
+  setSpawnPaused(p: boolean): void {
+    this.spawnPaused = p;
+  }
+
   /**
    * Update all vehicles and handle spawning
    */
   update(delta: number, _gridWidth: number, _gridHeight: number, _gridOffsetX: number, _gridOffsetY: number): void {
-    // Update spawn timers and spawn vehicles
-    this.spawnerDespawnerPairs.forEach(pair => {
+    if (!this.spawnPaused) {
+      // Update spawn timers and spawn vehicles
+      this.spawnerDespawnerPairs.forEach(pair => {
       const key = `${pair.spawnerX},${pair.spawnerY}`;
       const currentTime = this.spawnTimers.get(key) || 0;
       const newTime = currentTime - delta;
@@ -261,11 +301,12 @@ export class VehicleSystem {
         // Spawn a vehicle
         this.spawnVehicle(pair);
         // Reset timer with some variance
-        this.spawnTimers.set(key, this.spawnInterval + Math.random() * 1000);
+        this.spawnTimers.set(key, this.getCurrentSpawnIntervalMs() + Math.random() * 1000);
       } else {
         this.spawnTimers.set(key, newTime);
       }
     });
+    }
 
     // Update all vehicles
     const vehiclesToRemove: string[] = [];
@@ -381,17 +422,20 @@ export class VehicleSystem {
       ParkingTimerSystem.getInstance().startParkingTimer(vehicle.id);
     }
     
-    // Spawn pedestrian when first entering parking state
+    // Spawn pedestrian when first entering parking state (with probability)
     if (this.pedestrianSystem) {
       const existingPedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
       if (!existingPedestrian && vehicle.parkingTimer === vehicle.parkingDuration) {
-        // Just started parking and no pedestrian exists - spawn pedestrian
-        this.pedestrianSystem.spawnPedestrianFromVehicle(
-          vehicle.id,
-          vehicle.x,
-          vehicle.y,
-          vehicle.name
-        );
+        const shouldSpawn = Math.random() < this.driverExitsVehicleProbability;
+        vehicle.pedestrianSpawned = shouldSpawn;
+        if (shouldSpawn) {
+          this.pedestrianSystem.spawnPedestrianFromVehicle(
+            vehicle.id,
+            vehicle.x,
+            vehicle.y,
+            vehicle.name
+          );
+        }
       }
     }
     
@@ -400,17 +444,17 @@ export class VehicleSystem {
       vehicle.parkingTimer -= delta;
       
       if (vehicle.parkingTimer <= 0) {
-        // Parking time is up, but check if pedestrian has returned
+        // Parking time is up; leave if no pedestrian system, driver stayed in car, or pedestrian is back at vehicle
         if (this.pedestrianSystem) {
-          const pedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
-          
-          // Only allow vehicle to leave if pedestrian is at vehicle
-          if (pedestrian && pedestrian.state === 'at_vehicle') {
+          if (vehicle.pedestrianSpawned === false) {
             this.startVehicleLeaving(vehicle);
+          } else {
+            const pedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
+            if (pedestrian && pedestrian.state === 'at_vehicle') {
+              this.startVehicleLeaving(vehicle);
+            }
           }
-          // If pedestrian hasn't returned yet, vehicle waits
         } else {
-          // No pedestrian system, vehicle can leave immediately
           this.startVehicleLeaving(vehicle);
         }
       }
@@ -623,8 +667,9 @@ export class VehicleSystem {
   /**
    * Update grid size (e.g., when loading a new map)
    */
-  setGridSize(size: number): void {
-    this.gridSize = size;
-    this.pathfindingSystem.setGridSize(size);
+  setGridSize(width: number, height?: number): void {
+    this.gridWidth = width;
+    this.gridHeight = height ?? width;
+    this.pathfindingSystem.setGridSize(this.gridWidth, this.gridHeight);
   }
 }
