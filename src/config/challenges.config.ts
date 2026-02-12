@@ -50,6 +50,14 @@ export const CHALLENGES: Challenge[] = [
     vehicleSpawnIntervalMs: 4000,
     pedestrianRespawnMinMs: 5000,
     pedestrianRespawnMaxMs: 15000,
+    meterHighParkingRateThreshold: 5,
+    boothHighParkingRateThreshold: 5,
+    meterHighParkingRatePenaltyPerDollar: 10,
+    boothHighParkingRatePenaltyPerDollar: 10,
+    meterRefusalToParkThreshold: 10,
+    boothRefusalToParkThreshold: 10,
+    highParkingRatePenaltyMessage: "I can't believe they're charging this much to park! 😤",
+    refusalToParkMessage: "There's no way I'm paying that much to park. 😤",
   },
   {
     id: 'pizza-parking-problem',
@@ -71,6 +79,14 @@ export const CHALLENGES: Challenge[] = [
     pedestrianRespawnMaxMs: 12000,
     needGenerationProbability: 0.6,
     needTypeDistribution: { trash: 0.6, thirst: 0, toilet: 0.4 },
+    meterHighParkingRateThreshold: 1,
+    boothHighParkingRateThreshold: 1, // any booth rate = instant refusal
+    meterHighParkingRatePenaltyPerDollar: 10,
+    boothHighParkingRatePenaltyPerDollar: 10,
+    meterRefusalToParkThreshold: 2,
+    boothRefusalToParkThreshold: 1, // any booth rate = refusal
+    highParkingRatePenaltyMessage: "I gotta pay to park here? 😤",
+    refusalToParkMessage: "I'll eat somewhere else if I gotta pay to park. 😤",
   },
   {
     id: 'rush-hour-roundabout',
@@ -86,6 +102,14 @@ export const CHALLENGES: Challenge[] = [
     vehicleSpawnIntervalMs: 2500,
     pedestrianRespawnMinMs: 6000,
     pedestrianRespawnMaxMs: 18000,
+    meterHighParkingRateThreshold: 3,
+    boothHighParkingRateThreshold: 3,
+    meterHighParkingRatePenaltyPerDollar: 10,
+    boothHighParkingRatePenaltyPerDollar: 10,
+    meterRefusalToParkThreshold: 6,
+    boothRefusalToParkThreshold: 6,
+    highParkingRatePenaltyMessage: "Woah, expensive parking! 😤",
+    refusalToParkMessage: "I'd rather be late than pay that much to park. 😤",
   },
   {
     id: 'drive-in-disaster',
@@ -107,6 +131,14 @@ export const CHALLENGES: Challenge[] = [
     needGenerationProbability: 0.7,
     needTypeDistribution: { trash: 0.1, thirst: 0.2, toilet: 0.7 },
     driverExitsVehicleProbability: 0.2,
+    meterHighParkingRateThreshold: 0, // any meter rate = penalty (effectively)
+    meterHighParkingRatePenaltyPerDollar: 10,
+    boothHighParkingRateThreshold: 4,
+    boothHighParkingRatePenaltyPerDollar: 10,
+    meterRefusalToParkThreshold: 1, // any meter rate = instant refusal
+    boothRefusalToParkThreshold: 6,
+    highParkingRatePenaltyMessage: "This was more expensive than a normal movie. 😤",
+    refusalToParkMessage: "This movie is too expensive. Let's go somewhere else. 😤",
   },
   {
     id: 'airport-arrivals',
@@ -123,6 +155,15 @@ export const CHALLENGES: Challenge[] = [
     vehicleSpawnIntervalMs: 2000,
     pedestrianRespawnMinMs: 8000,
     pedestrianRespawnMaxMs: 25000,
+    meterHighParkingRateThreshold: 0, // any meter = penalty
+    boothHighParkingRateThreshold: 1,
+    meterHighParkingRatePenaltyPerDollar: 10,
+    boothHighParkingRatePenaltyPerDollar: 10,
+    meterRefusalToParkThreshold: 1, // any meter = instant refusal
+    boothRefusalToParkThreshold: 5,
+    highParkingRatePenaltyMessage: "Airport parking really robs you. . . 😤",
+    meterRefusalToParkMessage: "A meter? At an airport? I can't do that! 😤",
+    boothRefusalToParkMessage: "I need to park for a long time. This rate is unacceptable. 😤",
   },
 ];
 

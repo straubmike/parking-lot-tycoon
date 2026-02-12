@@ -367,7 +367,7 @@ export class MessageSystem {
   static insufficientSidewalk(parkerName: string): void {
     MessageSystem.getInstance().addParkerReaction(
       parkerName,
-      "Why is there no sidewalk to walk on here?",
+      "I wish there were more sidewalks here.",
       '😤'
     );
   }

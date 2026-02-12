@@ -6,6 +6,7 @@ import { SafetySystem } from '@/systems/SafetySystem';
 import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
 import { MessageSystem } from '@/systems/MessageSystem';
 import { GridManager } from './GridManager';
+import { resetParkingRateConfig } from '@/config/parkingRateConfig';
 
 /**
  * GameSystems - Central access point for all game systems
@@ -77,6 +78,7 @@ export class GameSystems {
     this.rating.reset();
     this.economy.reset(initialBudget);
     this.parkingTimer.reset();
+    resetParkingRateConfig();
     this.messages.reset();
     if (gridManager && gridWidth !== undefined && gridHeight !== undefined) {
       this.appeal.reset(gridManager, gridWidth, gridHeight);

@@ -7,6 +7,7 @@ import { PathfindingSystem, EdgeBlockedCallback, MoveCostCallback } from './Path
 import { GameSystems } from '@/core/GameSystems';
 import { ParkingTimerSystem } from './ParkingTimerSystem';
 import { MessageSystem } from './MessageSystem';
+import { getParkingRateConfig } from '@/config/parkingRateConfig';
 
 export class VehicleSystem {
   private vehicles: VehicleEntity[] = [];
@@ -132,26 +133,71 @@ export class VehicleSystem {
     return [...this.spawnerDespawnerPairs];
   }
 
-  /**
-   * Find an unreserved parking spot that is reachable from the given position
-   */
-  private findUnreservedParkingSpot(fromX: number, fromY: number): { x: number; y: number } | null {
-    const parkingSpots = this.getParkingSpots();
-    
-    // Shuffle parking spots to add variety in which spots get chosen
-    const shuffled = [...parkingSpots].sort(() => Math.random() - 0.5);
-    
-    for (const spot of shuffled) {
-      if (!spot.reserved) {
-        // Check if we can actually path to this spot
-        const path = this.pathfindingSystem.findPath(fromX, fromY, spot.x, spot.y, 'vehicle');
-        if (path.length > 0 || (fromX === spot.x && fromY === spot.y)) {
-          return { x: spot.x, y: spot.y };
-        }
+  /** Check if a Parking Booth exists anywhere on the grid. */
+  private hasBoothInLot(): boolean {
+    for (let x = 0; x < this.gridWidth; x++) {
+      for (let y = 0; y < this.gridHeight; y++) {
+        const cell = this.getCellData(x, y);
+        if (cell?.ploppable?.type === 'Parking Booth') return true;
       }
     }
-    
-    return null;
+    return false;
+  }
+
+  /**
+   * Find an unreserved parking spot that is reachable and passes refusal checks.
+   * Refusal reasons: rate too high, or meter spot when booth exists (meter+booth combo).
+   */
+  private findUnreservedParkingSpot(fromX: number, fromY: number): {
+    spot: { x: number; y: number } | null;
+    refusalSpotType: 'meter' | 'booth' | 'meter_and_booth' | null;
+  } {
+    const parkingSpots = this.getParkingSpots();
+    const parkingTimer = ParkingTimerSystem.getInstance();
+    const config = getParkingRateConfig();
+    const boothExists = this.hasBoothInLot();
+
+    // Build list of unreserved, reachable spots with their payment type
+    const candidates: { spot: Ploppable; isMeter: boolean }[] = [];
+    for (const spot of parkingSpots) {
+      if (spot.reserved) continue;
+      const path = this.pathfindingSystem.findPath(fromX, fromY, spot.x, spot.y, 'vehicle');
+      if (path.length === 0 && !(fromX === spot.x && fromY === spot.y)) continue;
+      const isMeter = spot.type === 'Parking Meter';
+      candidates.push({ spot, isMeter });
+    }
+
+    if (candidates.length === 0) return { spot: null, refusalSpotType: null };
+
+    // Filter by rate refusal threshold
+    const rateAcceptable = candidates.filter(({ isMeter }) => {
+      const rate = isMeter ? parkingTimer.getMeterParkingRate() : parkingTimer.getBoothParkingRate();
+      const threshold = isMeter ? config.meterRefusalThreshold : config.boothRefusalThreshold;
+      return rate < threshold;
+    });
+
+    // Filter out meter spots when booth exists (meter+booth = refuse)
+    const finalAcceptable = rateAcceptable.filter(
+      ({ isMeter }) => !(boothExists && isMeter)
+    );
+
+    const shuffled = [...(finalAcceptable.length > 0 ? finalAcceptable : rateAcceptable.length > 0 ? rateAcceptable : candidates)].sort(
+      () => Math.random() - 0.5
+    );
+
+    const chosen = shuffled[0];
+    if (finalAcceptable.length > 0) {
+      return { spot: { x: chosen.spot.x, y: chosen.spot.y }, refusalSpotType: null };
+    }
+
+    // Determine refusal reason for message
+    if (rateAcceptable.length > 0) {
+      return { spot: null, refusalSpotType: 'meter_and_booth' };
+    }
+    return {
+      spot: null,
+      refusalSpotType: chosen.isMeter ? 'meter' : 'booth',
+    };
   }
 
   /**
@@ -190,13 +236,15 @@ export class VehicleSystem {
     let reservedSpot: { x: number; y: number } | null = null;
     
     // If potential parker, try to find and reserve a parking spot
+    let refusalSpotType: 'meter' | 'booth' | 'meter_and_booth' | null = null;
     if (isPotentialParker) {
-      reservedSpot = this.findUnreservedParkingSpot(pair.spawnerX, pair.spawnerY);
-      if (reservedSpot && this.reserveParkingSpot(reservedSpot.x, reservedSpot.y)) {
+      const result = this.findUnreservedParkingSpot(pair.spawnerX, pair.spawnerY);
+      refusalSpotType = result.refusalSpotType;
+      if (result.spot && this.reserveParkingSpot(result.spot.x, result.spot.y)) {
+        reservedSpot = result.spot;
         targetX = reservedSpot.x;
         targetY = reservedSpot.y;
       } else {
-        // No reachable unreserved spot found, continue to despawner
         reservedSpot = null;
       }
     }
@@ -274,11 +322,24 @@ export class VehicleSystem {
         // Found a spot - register with initial score of 70
         GameSystems.rating.registerParker(vehicle.id, 70);
       } else {
-        // No spot available - register with initial score of 0
+        // No spot available or refused due to rate - register with initial score of 0
         GameSystems.rating.registerParker(vehicle.id, 0);
-        // Show message about not finding a spot
         if (vehicle.name) {
-          MessageSystem.noSpotAvailable(vehicle.name);
+          if (refusalSpotType) {
+            const config = getParkingRateConfig();
+            const msg =
+              refusalSpotType === 'meter_and_booth'
+                ? config.meterAndBoothRefusalMessage
+                : refusalSpotType === 'meter' && config.meterRefusalMessage
+                  ? config.meterRefusalMessage
+                  : refusalSpotType === 'booth' && config.boothRefusalMessage
+                    ? config.boothRefusalMessage
+                    : config.refusalMessage;
+            const emoji = refusalSpotType === 'meter_and_booth' ? '😤' : '';
+            MessageSystem.getInstance().addParkerReaction(vehicle.name, msg, emoji);
+          } else {
+            MessageSystem.noSpotAvailable(vehicle.name);
+          }
         }
       }
     }
@@ -473,7 +534,7 @@ export class VehicleSystem {
       const cellData = this.getCellData(vehicle.reservedSpotX, vehicle.reservedSpotY);
       if (cellData?.ploppable?.type === 'Parking Meter') {
         // Collect parking meter fee (this will cancel the timer internally)
-        ParkingTimerSystem.getInstance().collectMeterFee(vehicle.id);
+        ParkingTimerSystem.getInstance().collectMeterFee(vehicle.id, vehicle.name);
       } else {
         // No meter, cancel timer (vehicle will pay at booth if they pass through one)
         // Don't cancel here - let them pay at booth if they encounter one
@@ -588,7 +649,7 @@ export class VehicleSystem {
     const cellData = this.getCellData(vehicle.x, vehicle.y);
     if (cellData?.ploppable?.type === 'Parking Booth' && cellData.ploppable.subType === 'COLLECTION') {
       // Vehicle entered booth collection tile - collect fee
-      ParkingTimerSystem.getInstance().collectBoothFee(vehicle.id);
+      ParkingTimerSystem.getInstance().collectBoothFee(vehicle.id, vehicle.name);
     }
   }
 

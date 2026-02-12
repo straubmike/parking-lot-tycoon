@@ -220,6 +220,7 @@ export class PedestrianSystem {
     );
     
     if (pathToNeed.length > 0 || (startX === target.x && startY === target.y)) {
+      this.startNewTrip(pedestrian);
       pedestrian.path = pathToNeed;
       pedestrian.currentPathIndex = 0;
       return true;
@@ -325,7 +326,7 @@ export class PedestrianSystem {
       // If has need, will go to need fulfillment first, then destination
       pedestrian.state = 'spawning';
     } else {
-      // No need, proceed normally to destination
+      this.startNewTrip(pedestrian);
       pedestrian.path = pathToDestination;
       pedestrian.currentPathIndex = 0;
     }
@@ -440,27 +441,18 @@ export class PedestrianSystem {
               
               if (pathToVehicle.length > 0 || 
                   (pedestrian.x === pedestrian.vehicleX && pedestrian.y === pedestrian.vehicleY)) {
+                this.startNewTrip(pedestrian);
                 pedestrian.path = pathToVehicle;
                 pedestrian.currentPathIndex = 0;
                 pedestrian.state = 'respawning';
                 pedestrian.respawnTimer = undefined;
               } else {
-                // Can't find path back to vehicle - teleport (edge case)
                 console.warn('Pedestrian cannot find path back to vehicle, teleporting');
                 pedestrian.x = pedestrian.vehicleX;
                 pedestrian.y = pedestrian.vehicleY;
                 const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
                 pedestrian.screenX = vehicleScreenPos.x;
                 pedestrian.screenY = vehicleScreenPos.y;
-                // Track final position and check concrete percentage
-                if (!pedestrian.actualPathTiles) {
-                  pedestrian.actualPathTiles = [];
-                }
-                const lastTile = pedestrian.actualPathTiles[pedestrian.actualPathTiles.length - 1];
-                if (!lastTile || lastTile.x !== pedestrian.x || lastTile.y !== pedestrian.y) {
-                  pedestrian.actualPathTiles.push({ x: pedestrian.x, y: pedestrian.y });
-                }
-                this.checkConcreteTilePercentage(pedestrian);
                 pedestrian.state = 'at_vehicle';
               }
             }
@@ -621,6 +613,7 @@ export class PedestrianSystem {
     );
     
     if (pathToTarget.length > 0 || (pedestrian.x === targetX && pedestrian.y === targetY)) {
+      this.startNewTrip(pedestrian);
       pedestrian.path = pathToTarget;
       pedestrian.currentPathIndex = 0;
       pedestrian.state = nextState;
@@ -628,21 +621,11 @@ export class PedestrianSystem {
       // Can't find path - handle based on phase
       if (shouldGoToVehicle) {
         console.warn('Pedestrian cannot find path to vehicle after need fulfillment');
-        // Teleport to vehicle as fallback
         pedestrian.x = pedestrian.vehicleX;
         pedestrian.y = pedestrian.vehicleY;
         const vehicleScreenPos = isoToScreen(pedestrian.vehicleX, pedestrian.vehicleY);
         pedestrian.screenX = vehicleScreenPos.x;
         pedestrian.screenY = vehicleScreenPos.y;
-        // Track final position and check concrete percentage
-        if (!pedestrian.actualPathTiles) {
-          pedestrian.actualPathTiles = [];
-        }
-        const lastTile = pedestrian.actualPathTiles[pedestrian.actualPathTiles.length - 1];
-        if (!lastTile || lastTile.x !== pedestrian.x || lastTile.y !== pedestrian.y) {
-          pedestrian.actualPathTiles.push({ x: pedestrian.x, y: pedestrian.y });
-        }
-        this.checkConcreteTilePercentage(pedestrian);
         pedestrian.state = 'at_vehicle';
       } else {
         console.warn('Pedestrian cannot find path to destination after need fulfillment');
@@ -662,7 +645,7 @@ export class PedestrianSystem {
     if (targetType === 'destination') {
       if (pedestrian.destinationX !== undefined && pedestrian.destinationY !== undefined &&
           pedestrian.x === pedestrian.destinationX && pedestrian.y === pedestrian.destinationY) {
-        // Reached destination - despawn but keep entity
+        this.checkConcreteTilePercentage(pedestrian);
         pedestrian.state = 'despawned';
         pedestrian.respawnTimer = pedestrian.respawnDuration;
       }
@@ -704,7 +687,7 @@ export class PedestrianSystem {
           }
           
           if (targetPloppable && NeedsSystem.hasReachedNeedTarget(pedestrian.x, pedestrian.y, targetPloppable)) {
-            // Reached need target - fulfill need
+            this.checkConcreteTilePercentage(pedestrian);
             if (NeedsSystem.needRequiresDespawn(pedestrian.currentNeed!)) {
               // Portable toilet: despawn, wait 2-10 seconds (real time), then respawn at front face
               // Store the respawn location (front face position)
@@ -734,36 +717,46 @@ export class PedestrianSystem {
   }
 
   /**
-   * Check sidewalk tile percentage in pedestrian's actual path and apply penalty if < 50%
-   * Sidewalk tiles include concrete (0xffffff) and tiles with behavesLikeSidewalk (e.g., Crosswalks)
+   * Start a new trip segment - resets path tile tracking for the next path.
+   * A trip is one pathing segment to a destination (e.g. vehicle→need, need→de/respawner, de/respawner→vehicle).
    */
+  private startNewTrip(pedestrian: PedestrianEntity): void {
+    pedestrian.actualPathTiles = [{ x: pedestrian.x, y: pedestrian.y }];
+  }
+
+  /**
+   * Check sidewalk tile percentage for the current trip and apply penalty if < 50%
+   * Sidewalk tiles include concrete and behavesLikeSidewalk (e.g., Crosswalks).
+   * Only applies to trips of 7+ unique tiles.
+   */
+  private static readonly SIDEWALK_COMPLAINT_MIN_TILES = 7;
+
   private checkConcreteTilePercentage(pedestrian: PedestrianEntity): void {
     if (!pedestrian.actualPathTiles || pedestrian.actualPathTiles.length === 0) {
       return;
     }
-    
-    // Count sidewalk-like tiles (concrete or behavesLikeSidewalk)
+
     let sidewalkTileCount = 0;
     const uniqueTiles = new Set<string>();
-    
+
     for (const tile of pedestrian.actualPathTiles) {
       const tileKey = `${tile.x},${tile.y}`;
-      if (uniqueTiles.has(tileKey)) {
-        continue; // Skip duplicates
-      }
+      if (uniqueTiles.has(tileKey)) continue;
       uniqueTiles.add(tileKey);
-      
+
       const cellData = this.gridManager.getCellData(tile.x, tile.y);
-      // Count as sidewalk if it's concrete surface OR has behavesLikeSidewalk property (e.g., Crosswalks)
       if (cellData?.surfaceType === 'concrete' || cellData?.behavesLikeSidewalk === true) {
         sidewalkTileCount++;
       }
     }
-    
+
     const totalUniqueTiles = uniqueTiles.size;
-    const sidewalkPercentage = totalUniqueTiles > 0 ? (sidewalkTileCount / totalUniqueTiles) : 0;
-    
-    // Apply penalty if less than 50% sidewalk tiles
+    if (totalUniqueTiles < PedestrianSystem.SIDEWALK_COMPLAINT_MIN_TILES) {
+      return; // Short trips exempt from sidewalk complaint
+    }
+
+    const sidewalkPercentage = sidewalkTileCount / totalUniqueTiles;
+
     if (sidewalkPercentage < 0.5 && pedestrian.name) {
       // Show message
       MessageSystem.insufficientSidewalk(pedestrian.name);

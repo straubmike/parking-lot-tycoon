@@ -38,6 +38,36 @@ export interface Challenge {
   needTypeDistribution?: Partial<Record<'trash' | 'thirst' | 'toilet', number>>;
   /** Optional: probability (0-1) that driver exits vehicle (spawns pedestrian). Default 1. Lower = "stay in car" (e.g. Drive-In). */
   driverExitsVehicleProbability?: number;
+  /**
+   * Optional: dollar amount per 15 minutes above which parkers get a rating penalty.
+   * Fallback when meter/booth-specific values are omitted. Default 5.
+   */
+  highParkingRateThreshold?: number;
+  /**
+   * Optional: rating points to subtract per dollar over threshold.
+   * Fallback when meter/booth-specific values are omitted. Default 2.
+   */
+  highParkingRatePenaltyPerDollar?: number;
+  /** Optional: threshold for METER payments (pay-at-spot). Overrides highParkingRateThreshold when set. */
+  meterHighParkingRateThreshold?: number;
+  /** Optional: penalty per $ over meter threshold. 0 = no penalty. Overrides highParkingRatePenaltyPerDollar when set. */
+  meterHighParkingRatePenaltyPerDollar?: number;
+  /** Optional: threshold for BOOTH payments (pay-at-exit). Overrides highParkingRateThreshold when set. */
+  boothHighParkingRateThreshold?: number;
+  /** Optional: penalty per $ over booth threshold. 0 = no penalty. Overrides highParkingRatePenaltyPerDollar when set. */
+  boothHighParkingRatePenaltyPerDollar?: number;
+  /** Optional: rate ($/15min) at or above which parkers refuse to reserve a METER spot. */
+  meterRefusalToParkThreshold?: number;
+  /** Optional: rate ($/15min) at or above which parkers refuse to reserve a BOOTH spot (regular spot, pay at exit). */
+  boothRefusalToParkThreshold?: number;
+  /** Optional: message when parker pays but gets high-rate penalty (include emoji). */
+  highParkingRatePenaltyMessage?: string;
+  /** Optional: message when parker refuses to park due to rate (include emoji). Used when meter/booth-specific not set. */
+  refusalToParkMessage?: string;
+  /** Optional: message when refusing due to METER spot rate (e.g. Airport). Overrides refusalToParkMessage for meter. */
+  meterRefusalToParkMessage?: string;
+  /** Optional: message when refusing due to BOOTH spot rate (e.g. Airport). Overrides refusalToParkMessage for booth. */
+  boothRefusalToParkMessage?: string;
   /** Optional: URL path to preload grid JSON (e.g. "/learninglot.json"). When set, scene loads this grid after creating the scene. */
   initialGridPath?: string;
 }

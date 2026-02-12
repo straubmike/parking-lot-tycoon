@@ -11,6 +11,7 @@ import { GridManager } from '@/core/GridManager';
 import { SafetySystem } from '@/systems/SafetySystem';
 import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
 import { getChallengeById, getSpawnIntervalMsForSchedule } from '@/config/challenges.config';
+import { setParkingRateConfig } from '@/config/parkingRateConfig';
 import { getPloppableCost, DEMOLISH_REFUND_FRACTION } from '@/config/ploppableCosts.config';
 import { getSurfaceCost } from '@/config/surfaceCosts.config';
 import { getLineCost } from '@/config/lineCosts.config';
@@ -126,6 +127,30 @@ export class ChallengeScene extends BaseGameplayScene {
       this.pedestrianSystem.setNeedTypeDistribution(challenge.needTypeDistribution);
     } else {
       this.pedestrianSystem.setNeedTypeDistribution({ trash: 0.25, thirst: 0.25, toilet: 0.5 });
+    }
+
+    const parkingTimer = ParkingTimerSystem.getInstance();
+    const meterThreshold = challenge?.meterHighParkingRateThreshold ?? challenge?.highParkingRateThreshold ?? 5;
+    const meterPenalty = challenge?.meterHighParkingRatePenaltyPerDollar ?? challenge?.highParkingRatePenaltyPerDollar ?? 10;
+    const boothThreshold = challenge?.boothHighParkingRateThreshold ?? challenge?.highParkingRateThreshold ?? 5;
+    const boothPenalty = challenge?.boothHighParkingRatePenaltyPerDollar ?? challenge?.highParkingRatePenaltyPerDollar ?? 10;
+    const meterRefusal = challenge?.meterRefusalToParkThreshold ?? 10;
+    const boothRefusal = challenge?.boothRefusalToParkThreshold ?? 10;
+    if (challenge) {
+      parkingTimer.setMeterHighRatePenalty(meterThreshold, meterPenalty);
+      parkingTimer.setBoothHighRatePenalty(boothThreshold, boothPenalty);
+      setParkingRateConfig({
+        meterThreshold,
+        boothThreshold,
+        meterPenalty,
+        boothPenalty,
+        meterRefusalThreshold: meterRefusal,
+        boothRefusalThreshold: boothRefusal,
+        penaltyMessage: challenge.highParkingRatePenaltyMessage ?? "I can't believe they're charging this much to park! 😤",
+        refusalMessage: challenge.refusalToParkMessage ?? "There's no way I'm paying that much to park. 😤",
+        meterRefusalMessage: challenge.meterRefusalToParkMessage ?? null,
+        boothRefusalMessage: challenge.boothRefusalToParkMessage ?? null,
+      });
     }
 
     this.setupKeyboardControls();
@@ -1368,12 +1393,21 @@ export class ChallengeScene extends BaseGameplayScene {
   private setupRateInputHandler(): void {
     // Wait for DOM to be ready
     this.time.delayedCall(100, () => {
-      const rateInput = document.getElementById('parking-rate-input') as HTMLInputElement;
-      if (rateInput) {
-        rateInput.addEventListener('change', () => {
-          const rate = Math.max(1, Math.floor(parseFloat(rateInput.value) || 1));
-          rateInput.value = rate.toString();
-          ParkingTimerSystem.getInstance().setParkingRate(rate);
+      const parkingTimer = ParkingTimerSystem.getInstance();
+      const meterInput = document.getElementById('meter-rate-input') as HTMLInputElement;
+      const boothInput = document.getElementById('booth-rate-input') as HTMLInputElement;
+      if (meterInput) {
+        meterInput.addEventListener('change', () => {
+          const rate = Math.max(1, Math.floor(parseFloat(meterInput.value) || 1));
+          meterInput.value = rate.toString();
+          parkingTimer.setMeterParkingRate(rate);
+        });
+      }
+      if (boothInput) {
+        boothInput.addEventListener('change', () => {
+          const rate = Math.max(1, Math.floor(parseFloat(boothInput.value) || 1));
+          boothInput.value = rate.toString();
+          parkingTimer.setBoothParkingRate(rate);
         });
       }
     });
@@ -1543,7 +1577,8 @@ export class ChallengeScene extends BaseGameplayScene {
     const selectionDescription = document.getElementById('selection-description');
     const selectionInstructions = document.getElementById('selection-instructions');
     const rateInputContainer = document.getElementById('selection-rate-input-container');
-    const rateInput = document.getElementById('parking-rate-input') as HTMLInputElement;
+    const meterRateInput = document.getElementById('meter-rate-input') as HTMLInputElement;
+    const boothRateInput = document.getElementById('booth-rate-input') as HTMLInputElement;
 
     const setPrice = (text: string) => {
       if (selectionPrice) {
@@ -1625,12 +1660,12 @@ export class ChallengeScene extends BaseGameplayScene {
           selectionInstructions.style.display = 'none';
         }
         
-        // Show rate input for Parking Meter and Parking Booth
-        if ((this.selectedPloppableType === 'Parking Meter' || this.selectedPloppableType === 'Parking Booth') && rateInputContainer && rateInput) {
+        // Show rate inputs for Parking Meter and Parking Booth
+        if ((this.selectedPloppableType === 'Parking Meter' || this.selectedPloppableType === 'Parking Booth') && rateInputContainer && meterRateInput && boothRateInput) {
           rateInputContainer.style.display = 'block';
-          // Initialize with current rate
-          const currentRate = ParkingTimerSystem.getInstance().getParkingRate();
-          rateInput.value = currentRate.toString();
+          const parkingTimer = ParkingTimerSystem.getInstance();
+          meterRateInput.value = parkingTimer.getMeterParkingRate().toString();
+          boothRateInput.value = parkingTimer.getBoothParkingRate().toString();
         } else if (rateInputContainer) {
           rateInputContainer.style.display = 'none';
         }
