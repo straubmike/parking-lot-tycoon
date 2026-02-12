@@ -23,7 +23,7 @@ const LEARNING_LOT_TUTORIAL_STEPS: { text: string; highlight: TutorialHighlightT
   { text: 'Welcome to Parking Lot Tycoon! Your goal is to design a parking lot that meets each challenge\'s win conditions.', highlight: 'none' },
   { text: 'This is the playable area. You can edit these tiles to design the lot.', highlight: 'playable' },
   { text: 'This is the road access. You cannot edit these tiles (or the sidewalks on the grid border).', highlight: 'road' },
-  { text: 'This is a lane line. Cars can cross these lines and will try to drive on the right.', highlight: 'lane_line' },
+  { text: 'This is a lane line. Cars prefer to stay on the right and avoid crossing lane lines when possible.', highlight: 'lane_line' },
   { text: 'This is a curb. Cars cannot pass over them, so remember to delete them where necessary.', highlight: 'curb' },
   { text: 'Try designing a lot with a rating of 50 and at least three parking spots before the end of day 3. You have $5000 to play with. Once achieved, you\'ll unlock the Pizza Parking Problem!', highlight: 'none' },
 ];

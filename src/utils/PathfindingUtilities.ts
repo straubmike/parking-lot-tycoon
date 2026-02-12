@@ -90,7 +90,13 @@ export class PathfindingUtilities {
   }
 
   /**
-   * Check if a cell has a parking spot with the given edge blocked (drawn)
+   * Check if a cell has a parking spot with the given edge blocked (drawn).
+   *
+   * Manual regression checklist for parking spot pathing:
+   * - Orientation 0 (missing left/edge 3): enter from West only; entering from N/S/E should be blocked.
+   * - Orientation 1 (missing bottom/edge 2): enter from South only; entering from N/E/W should be blocked.
+   * - Orientation 2 (missing top/edge 0): enter from North only; entering from S/E/W should be blocked.
+   * - Orientation 3 (missing right/edge 1): enter from East only; entering from N/S/W should be blocked.
    */
   static isParkingSpotEdgeBlocked(
     cellX: number,
@@ -127,11 +133,16 @@ export class PathfindingUtilities {
 
   /**
    * Check if an edge blocks a specific entity type
-   * - Vehicles: Blocked by curbs, fences, lane lines (directional), parking spot borders, and impassable ploppables
+   * - Vehicles: Blocked by curbs, fences, parking spot borders, impassable ploppables, and lane-line one-way (when laneLineOneWayOnly)
    * - Pedestrians: Blocked by fences and impassable ploppables
-   * 
-   * @param isEntryEdge - If true, this is an entry edge (check parking spots, lane lines, curbs, ploppables). If false, this is a corridor edge (only check fences).
-   * @param movementDirection - The direction of movement (for lane line "drive on the right" logic)
+   *
+   * Lane lines (yellow): Two kinds — parallel to X (edges 0/2) and parallel to Y (edges 1/3).
+   * Perpendicular crossing of a lane line is allowed. Parallel movement is one-way: the lane line must be on the vehicle's left (drive on the right).
+   * When laneLineOneWayOnly is true, this call is checking the edge on the vehicle's RIGHT; if it has a lane line, block (wrong-way).
+   *
+   * @param isEntryEdge - If true, this is an entry edge (check parking spots, curbs, ploppables). If false, corridor edge (only check fences).
+   * @param movementDirection - The direction of movement.
+   * @param laneLineOneWayOnly - When true, only block if this edge has a lane line (vehicles only). Used for one-way parallel-to-lane check.
    */
   static isEdgeBlockedForEntity(
     cellX: number,
@@ -140,8 +151,17 @@ export class PathfindingUtilities {
     entityType: 'vehicle' | 'pedestrian',
     gridManager: GridManager,
     isEntryEdge: boolean = true,
-    movementDirection: 'north' | 'south' | 'east' | 'west' = 'north'
+    movementDirection: 'north' | 'south' | 'east' | 'west' = 'north',
+    laneLineOneWayOnly: boolean = false
   ): boolean {
+    // One-way lane check: block vehicle only if the edge on our right has a lane line (wrong-way).
+    if (laneLineOneWayOnly) {
+      if (entityType !== 'vehicle') return false;
+      const key = gridManager.findExistingBorderSegmentKey(cellX, cellY, edge);
+      if (!key) return false;
+      const color = gridManager.getBorderSegment(key);
+      return color === 0xffff00; // yellow = lane line → block
+    }
     // Check border segments (curbs, fences, and lane lines)
     // Key insight: 
     // - Fences block everything everywhere (use shared edge lookup)
@@ -190,16 +210,11 @@ export class PathfindingUtilities {
         return true;
       }
     }
-    
-    // Lane line (yellow) - controls vehicle lane behavior
-    // Lane lines DON'T block movement - they enforce "drive on the right" via cost penalties
-    // The getLaneLineCrossingCost function adds a heavy penalty for crossing lane lines,
-    // which makes vehicles prefer to stay in their lane and take longer routes
-    // rather than crossing into oncoming traffic.
-    // 
-    // NOTE: Lane lines are NOT blocking barriers. Vehicles CAN cross them if necessary,
-    // but pathfinding will strongly prefer routes that don't require crossing.
-    
+
+    // Lane line (yellow) — N-S and E-W perpendicular crossing is NOT hard-blocked here.
+    // Instead, a cost penalty is applied via getLaneLineCrossingCost so A* prefers paths
+    // that don't cross the lane line unnecessarily but still crosses when it's the only way.
+
     // Check parking spot borders on entry edges (only for vehicles)
     // When isEntryEdge is true, cellX/cellY is the target cell and edge is the target edge
     // Parking spot borders are on the parking spot cell itself, so check directly
@@ -260,84 +275,37 @@ export class PathfindingUtilities {
   }
 
   /**
-   * Check if a move crosses a lane line perpendicularly (for cost penalty)
-   * Returns the cost penalty for crossing a lane line (higher = pathfinding will avoid it)
-   * @param fromX - Starting cell X
-   * @param fromY - Starting cell Y
-   * @param toX - Target cell X
-   * @param toY - Target cell Y
-   * @param direction - Direction of movement
-   * @param entityType - Type of entity
-   * @param gridManager - Grid manager instance
-   * @returns Cost penalty (0 if no lane line crossed, >0 if lane line crossed)
+   * Cost for crossing a lane line perpendicularly. Adds a penalty for vehicles crossing
+   * N-S or E-W lane lines so A* prefers paths that avoid unnecessary lane-line crossings
+   * (e.g. prevents "early left turn" lane-switching) while still allowing crossings when
+   * they are the only way to reach the destination (e.g. parking spots on the other side).
    */
   static getLaneLineCrossingCost(
     fromX: number,
     fromY: number,
-    toX: number,
-    toY: number,
+    _toX: number,
+    _toY: number,
     direction: 'north' | 'south' | 'east' | 'west',
     entityType: 'vehicle' | 'pedestrian',
     gridManager: GridManager
   ): number {
-    // Only vehicles are affected by lane lines
-    if (entityType !== 'vehicle') {
-      return 0;
+    if (entityType !== 'vehicle') return 0;
+
+    // For E/W movement: check if we cross an N-S lane line (edge 1 for east, edge 3 for west)
+    if (direction === 'east' || direction === 'west') {
+      const crossEdge = direction === 'east' ? 1 : 3;
+      const key = gridManager.findExistingBorderSegmentKey(fromX, fromY, crossEdge);
+      if (key && gridManager.getBorderSegment(key) === 0xffff00) {
+        return 5; // penalty: crossing N-S lane line
+      }
     }
 
-    // Get edges that would be crossed in this move
-    const isNorthSouthMovement = direction === 'north' || direction === 'south';
-    const isEastWestMovement = direction === 'east' || direction === 'west';
-    
-    // For entry edges, check if we're crossing a lane line perpendicularly
-    // We need to check the entry edge of the target cell
-    let entryEdge: number;
-    if (direction === 'north') {
-      entryEdge = 2; // Bottom edge of target cell
-    } else if (direction === 'south') {
-      entryEdge = 0; // Top edge of target cell
-    } else if (direction === 'east') {
-      entryEdge = 3; // Left edge of target cell
-    } else { // west
-      entryEdge = 1; // Right edge of target cell
-    }
-
-    // Check if there's a lane line on the entry edge
-    const existingKey = gridManager.findExistingBorderSegmentKey(toX, toY, entryEdge);
-    // #region agent log
-    if (entityType === 'vehicle' && (fromX === 2 && toX === 1 || fromX === 3 && toX === 2 || fromX === 1 && toX === 0)) {
-      fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingUtilities.ts:getLaneLineCrossingCost',message:'Checking west move for lane line',data:{fromX,fromY,toX,toY,direction,entryEdge,existingKey,hasLaneLine:!!existingKey},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'C'})}).catch(()=>{});
-    }
-    // #endregion
-    if (existingKey) {
-      const color = gridManager.getBorderSegment(existingKey);
-      if (color === 0xffff00) {
-        // Lane line detected - check if this is a perpendicular crossing
-        // CRITICAL: Lane line orientation is OPPOSITE to edge orientation:
-        // - Lane line on VERTICAL edge (0/2 = top/bottom) actually spans HORIZONTALLY (E/W)
-        //   So it should penalize PERPENDICULAR crossings (N/S movement crossing E/W lane line)
-        // - Lane line on HORIZONTAL edge (1/3 = right/left) actually spans VERTICALLY (N/S)  
-        //   So it should penalize PERPENDICULAR crossings (E/W movement crossing N/S lane line)
-        const isVerticalEdge = entryEdge === 0 || entryEdge === 2;
-        const isHorizontalEdge = entryEdge === 1 || entryEdge === 3;
-        
-        // Perpendicular crossing: crossing a lane line that spans perpendicular to movement
-        // - Vertical edge lane line (spans E/W): penalize N/S crossings
-        // - Horizontal edge lane line (spans N/S): penalize E/W crossings
-        const isPerpendicularCrossing = 
-          (isVerticalEdge && isNorthSouthMovement) ||
-          (isHorizontalEdge && isEastWestMovement);
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingUtilities.ts:getLaneLineCrossingCost',message:'Lane line detected',data:{fromX,fromY,toX,toY,direction,entryEdge,isVerticalEdge,isHorizontalEdge,isNorthSouthMovement,isEastWestMovement,isPerpendicularCrossing,willApplyCost:isPerpendicularCrossing},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A,C,D'})}).catch(()=>{});
-        // #endregion
-        
-        if (isPerpendicularCrossing) {
-          // BLOCK lane line crossings entirely for vehicles - return infinite cost
-          // This ensures vehicles NEVER cross into oncoming traffic lanes
-          // They will always find alternative routes, even if much longer
-          return Infinity; // Infinite cost = this path will never be chosen
-        }
+    // For N/S movement: check if we cross an E-W lane line (edge 0 for north, edge 2 for south)
+    if (direction === 'north' || direction === 'south') {
+      const crossEdge = direction === 'north' ? 0 : 2;
+      const key = gridManager.findExistingBorderSegmentKey(fromX, fromY, crossEdge);
+      if (key && gridManager.getBorderSegment(key) === 0xffff00) {
+        return 5; // penalty: crossing E-W lane line
       }
     }
 
@@ -345,29 +313,58 @@ export class PathfindingUtilities {
   }
 
   /**
-   * Get the neighbor cell that shares a given edge
-   * Returns the neighbor cell coordinates and the corresponding edge number
+   * Validate a vehicle path: count how many path steps cross a lane line (perpendicular). Used for debug; one-way violations are prevented by blocking, not cost.
+   * @returns Object with crossingCount (perpendicular crossings only).
+   */
+  static validateVehiclePathLaneCrossings(
+    path: { x: number; y: number }[],
+    startX: number,
+    startY: number,
+    gridManager: GridManager
+  ): { crossingCount: number } {
+    let crossingCount = 0;
+    let fromX = startX;
+    let fromY = startY;
+    for (const to of path) {
+      const dx = to.x - fromX;
+      const dy = to.y - fromY;
+      const direction: 'north' | 'south' | 'east' | 'west' =
+        dx > 0 ? 'east' : dx < 0 ? 'west' : dy > 0 ? 'south' : 'north';
+      const cost = this.getLaneLineCrossingCost(
+        fromX, fromY, to.x, to.y, direction, 'vehicle', gridManager
+      );
+      if (cost > 0) crossingCount++;
+      fromX = to.x;
+      fromY = to.y;
+    }
+    return { crossingCount };
+  }
+
+  /**
+   * Get the neighbor cell that shares a given edge.
+   * Returns the neighbor cell coordinates and the corresponding edge number.
+   * Convention must match GridManager.getAllPossibleBorderSegmentKeys (axis-aligned for N/S).
    */
   static getNeighborCellForEdge(
     cellX: number,
     cellY: number,
     edge: number
   ): { cellX: number; cellY: number; edge: number } | null {
-    // Edge sharing relationships:
-    // - Edge 0 (top) of (x,y) = Edge 2 (bottom) of (x-1, y+1)
+    // Edge sharing (single convention used by GridManager and pathfinding):
+    // - Edge 0 (top) of (x,y) = Edge 2 (bottom) of (x, y-1)
     // - Edge 1 (right) of (x,y) = Edge 3 (left) of (x+1, y)
-    // - Edge 2 (bottom) of (x,y) = Edge 0 (top) of (x+1, y-1)
+    // - Edge 2 (bottom) of (x,y) = Edge 0 (top) of (x, y+1)
     // - Edge 3 (left) of (x,y) = Edge 1 (right) of (x-1, y)
     
     switch (edge) {
       case 0: // top -> neighbor's bottom
-        return { cellX: cellX - 1, cellY: cellY + 1, edge: 2 };
+        return { cellX, cellY: cellY - 1, edge: 2 };
       case 1: // right -> neighbor's left
-        return { cellX: cellX + 1, cellY: cellY, edge: 3 };
+        return { cellX: cellX + 1, cellY, edge: 3 };
       case 2: // bottom -> neighbor's top
-        return { cellX: cellX + 1, cellY: cellY - 1, edge: 0 };
+        return { cellX, cellY: cellY + 1, edge: 0 };
       case 3: // left -> neighbor's right
-        return { cellX: cellX - 1, cellY: cellY, edge: 1 };
+        return { cellX: cellX - 1, cellY, edge: 1 };
       default:
         return null;
     }

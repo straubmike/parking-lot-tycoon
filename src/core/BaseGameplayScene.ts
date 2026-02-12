@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
+import { TILE_WIDTH, TILE_HEIGHT, DEBUG_PATH_LANE_CHECK, DEBUG_LOG_VEHICLE_PATHS_AND_LANES } from '@/config/game.config';
 import { GridManager } from './GridManager';
 import { GridRenderer } from '@/systems/GridRenderer';
 import { PloppableManager } from '@/systems/PloppableManager';
@@ -162,7 +162,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       edge: number,
       entityType: 'vehicle' | 'pedestrian',
       isEntryEdge: boolean,
-      movementDirection: 'north' | 'south' | 'east' | 'west'
+      movementDirection: 'north' | 'south' | 'east' | 'west',
+      laneLineOneWayOnly?: boolean
     ): boolean => {
       return PathfindingUtilities.isEdgeBlockedForEntity(
         cellX,
@@ -171,7 +172,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         entityType,
         this.gridManager,
         isEntryEdge,
-        movementDirection
+        movementDirection,
+        laneLineOneWayOnly ?? false
       );
     };
     
@@ -193,13 +195,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         entityType,
         this.gridManager
       );
-      
-      // #region agent log
-      if (entityType === 'vehicle' && cost > 0) {
-        fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'BaseGameplayScene.ts:getMoveCost',message:'Vehicle lane crossing cost applied',data:{fromX,fromY,toX,toY,direction,cost},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'A'})}).catch(()=>{});
-      }
-      // #endregion
-      
+
       // For pedestrians, ADD cost for non-concrete tiles to encourage using sidewalks
       // We use a penalty approach instead of discount because negative costs break A* heuristic
       // (Manhattan distance doesn't account for discounts, causing suboptimal paths)
@@ -229,7 +225,57 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       getMoveCost // Pass move cost callback for concrete tile preference
     );
     
-    // Initialize vehicle system (with pedestrian system reference)
+    const onVehiclePathFound = (path: { x: number; y: number }[], startX: number, startY: number, goalX: number, goalY: number) => {
+      if (DEBUG_PATH_LANE_CHECK) {
+        const { crossingCount } = PathfindingUtilities.validateVehiclePathLaneCrossings(
+          path, startX, startY, this.gridManager
+        );
+        if (crossingCount > 0) {
+          console.warn('[PathDebug] Vehicle path has', crossingCount, 'lane-line crossing(s)');
+        }
+      }
+      if (DEBUG_LOG_VEHICLE_PATHS_AND_LANES && path.length > 0) {
+        const dir = (ax: number, ay: number, bx: number, by: number) => {
+          const dx = bx - ax, dy = by - ay;
+          if (dx > 0) return 'east';
+          if (dx < 0) return 'west';
+          if (dy > 0) return 'south';
+          return 'north';
+        };
+        const steps: { dir: string; x: number; y: number }[] = [];
+        let px = startX, py = startY;
+        for (const p of path) {
+          steps.push({ dir: dir(px, py, p.x, p.y), x: p.x, y: p.y });
+          px = p.x;
+          py = p.y;
+        }
+        const turns: { index: number; fromDir: string; toDir: string; at: { x: number; y: number } }[] = [];
+        for (let i = 1; i < steps.length; i++) {
+          if (steps[i].dir !== steps[i - 1].dir) {
+            turns.push({
+              index: i,
+              fromDir: steps[i - 1].dir,
+              toDir: steps[i].dir,
+              at: { x: steps[i].x, y: steps[i].y },
+            });
+          }
+        }
+        const laneLines: { cellX: number; cellY: number; edge: number }[] = [];
+        const YELLOW = 0xffff00;
+        this.gridManager.getAllBorderSegments().forEach((color, key) => {
+          if (color !== YELLOW) return;
+          const parts = key.split(',');
+          if (parts.length !== 3) return;
+          const cellX = parseInt(parts[0], 10);
+          const cellY = parseInt(parts[1], 10);
+          const edge = parseInt(parts[2], 10);
+          if (!Number.isNaN(cellX) && !Number.isNaN(cellY) && !Number.isNaN(edge)) {
+            laneLines.push({ cellX, cellY, edge });
+          }
+        });
+        console.log('[PathDebug] Vehicle path:', { start: { x: startX, y: startY }, goal: { x: goalX, y: goalY }, pathLength: path.length, turns });
+      }
+    };
     this.vehicleSystem = new VehicleSystem(
       this.gridWidth,
       this.gridHeight,
@@ -237,7 +283,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       () => this.getAllParkingSpots(),
       isEdgeBlocked,
       getMoveCost,
-      this.pedestrianSystem
+      this.pedestrianSystem,
+      (DEBUG_PATH_LANE_CHECK || DEBUG_LOG_VEHICLE_PATHS_AND_LANES) ? onVehiclePathFound : undefined
     );
   }
 

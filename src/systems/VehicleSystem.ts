@@ -28,6 +28,13 @@ export class VehicleSystem {
   private pathfindingSystem: PathfindingSystem;
   private gridWidth: number;
   private gridHeight: number;
+  private onVehiclePathFound?: (
+    path: { x: number; y: number }[],
+    startX: number,
+    startY: number,
+    goalX: number,
+    goalY: number
+  ) => void;
 
   constructor(
     gridWidth: number,
@@ -36,14 +43,22 @@ export class VehicleSystem {
     getParkingSpots: () => Ploppable[],
     isEdgeBlocked: EdgeBlockedCallback,
     getMoveCost?: MoveCostCallback,
-    pedestrianSystem?: PedestrianSystem
+    pedestrianSystem?: PedestrianSystem,
+    onVehiclePathFound?: (
+      path: { x: number; y: number }[],
+      startX: number,
+      startY: number,
+      goalX: number,
+      goalY: number
+    ) => void
   ) {
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight;
     this.getCellData = getCellData;
     this.getParkingSpots = getParkingSpots;
     this.pedestrianSystem = pedestrianSystem;
-    
+    this.onVehiclePathFound = onVehiclePathFound;
+
     // Initialize pathfinding system
     this.pathfindingSystem = new PathfindingSystem(
       gridWidth,
@@ -187,28 +202,14 @@ export class VehicleSystem {
     }
     
     // Find path using A* pathfinding
-    const path = this.pathfindingSystem.findPath(
+    let path = this.pathfindingSystem.findPath(
       pair.spawnerX,
       pair.spawnerY,
       targetX,
       targetY,
       'vehicle'
     );
-    
-    // #region agent log
-    if (isPotentialParker && reservedSpot) {
-      // Check for lane crossings in the complete path
-      const laneCrossings: Array<{fromX:number,fromY:number,toX:number,toY:number}> = [];
-      for (let i = 0; i < path.length; i++) {
-        const from = i === 0 ? {x: pair.spawnerX, y: pair.spawnerY} : path[i-1];
-        const to = path[i];
-        // Check if this move crosses a lane line by checking edges between cells
-        // This is a simplified check - we'd need full edge checking for accuracy
-      }
-      fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VehicleSystem.ts:spawnVehicle',message:'Vehicle pathfinding to parking spot',data:{spawnerX:pair.spawnerX,spawnerY:pair.spawnerY,reservedSpotX:reservedSpot.x,reservedSpotY:reservedSpot.y,pathLength:path.length,fullPath:path,laneCrossings},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B,E'})}).catch(()=>{});
-    }
-    // #endregion
-    
+
     // If no path found and we reserved a spot, unreserve it and try for despawner
     if (path.length === 0 && reservedSpot) {
       this.unreserveParkingSpot(reservedSpot.x, reservedSpot.y);
@@ -238,7 +239,9 @@ export class VehicleSystem {
       console.warn('Vehicle cannot find path from spawner to despawner');
       return;
     }
-    
+
+    this.onVehiclePathFound?.(path, pair.spawnerX, pair.spawnerY, targetX, targetY);
+
     // Random speed with variance
     const speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
     
@@ -534,65 +537,48 @@ export class VehicleSystem {
   }
 
   /**
-   * Move vehicle towards its current path target
-   * Returns true if the target was reached
+   * Move vehicle towards its current path target.
+   * Returns true if the target was reached.
+   * Current cell (vehicle.x, vehicle.y) is derived from path progress so tile logic
+   * (booth, speed bump, concrete) and "am I on a parking spot?" only fire when the path actually enters that cell.
    */
   private moveVehicleTowardsTarget(vehicle: VehicleEntity, delta: number): boolean {
     const target = vehicle.path[vehicle.currentPathIndex];
     const targetScreenPos = isoToScreen(target.x, target.y);
     const targetScreenX = targetScreenPos.x;
     const targetScreenY = targetScreenPos.y;
-    
+
     const dx = targetScreenX - vehicle.screenX;
     const dy = targetScreenY - vehicle.screenY;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    
+
     const moveDistance = (vehicle.speed * delta) / 1000;
-    
+
+    // Keep logical grid position from path: we're in the cell we're coming from until we reach the next waypoint
+    const logicalX = vehicle.currentPathIndex === 0 ? vehicle.spawnerX : vehicle.path[vehicle.currentPathIndex - 1].x;
+    const logicalY = vehicle.currentPathIndex === 0 ? vehicle.spawnerY : vehicle.path[vehicle.currentPathIndex - 1].y;
+    vehicle.x = logicalX;
+    vehicle.y = logicalY;
+
     if (distance <= moveDistance || distance < 0.1) {
-      // Reached target
+      // Reached target: now we're in the target cell
       vehicle.screenX = targetScreenX;
       vehicle.screenY = targetScreenY;
       vehicle.x = target.x;
       vehicle.y = target.y;
-      
-      // Check for parking booth collection tile
+
       this.checkParkingBooth(vehicle);
-      
-      // Check for speed bump on new cell and adjust speed
       this.checkSpeedBump(vehicle);
-      
-      // Check for concrete tile and increment counter
       this.checkConcreteTile(vehicle);
       return true;
-    } else {
-      // Move towards target
-      const moveX = (dx / distance) * moveDistance;
-      const moveY = (dy / distance) * moveDistance;
-      vehicle.screenX += moveX;
-      vehicle.screenY += moveY;
-      
-      // Update grid position
-      const isoPos = this.screenToIso(vehicle.screenX, vehicle.screenY);
-      const newGridX = Math.round(isoPos.x);
-      const newGridY = Math.round(isoPos.y);
-      
-      // Check if grid position changed
-      if (newGridX !== vehicle.x || newGridY !== vehicle.y) {
-        vehicle.x = newGridX;
-        vehicle.y = newGridY;
-        
-        // Check for parking booth collection tile
-        this.checkParkingBooth(vehicle);
-        
-        // Check for speed bump on new cell and adjust speed
-        this.checkSpeedBump(vehicle);
-        
-        // Check for concrete tile and increment counter
-        this.checkConcreteTile(vehicle);
-      }
-      return false;
     }
+
+    // Moving towards target: interpolate screen position only; logical cell stays path-based above
+    const moveX = (dx / distance) * moveDistance;
+    const moveY = (dy / distance) * moveDistance;
+    vehicle.screenX += moveX;
+    vehicle.screenY += moveY;
+    return false;
   }
   
   /**

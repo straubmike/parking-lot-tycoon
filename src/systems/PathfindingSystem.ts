@@ -8,11 +8,12 @@ export type PathfindingEntityType = 'vehicle' | 'pedestrian';
 /**
  * Callback type for checking if an edge blocks movement
  * @param cellX - Cell X coordinate
- * @param cellY - Cell Y coordinate  
+ * @param cellY - Cell Y coordinate
  * @param edge - Edge index (0=top, 1=right, 2=bottom, 3=left)
  * @param entityType - Type of entity trying to cross
  * @param isEntryEdge - Whether this is an entry edge (true) or corridor edge (false). Entry edges check parking spots, lane lines, and curbs. Corridor edges only check fences.
  * @param movementDirection - The direction of movement (for lane line "drive on the right" logic)
+ * @param laneLineOneWayOnly - When true, only block if this edge has a lane line (one-way violation: line on vehicle's right). Used for parallel-to-lane movement; perpendicular crossing is not checked here.
  * @returns true if the edge blocks this entity type
  */
 export type EdgeBlockedCallback = (
@@ -21,7 +22,8 @@ export type EdgeBlockedCallback = (
   edge: number,
   entityType: PathfindingEntityType,
   isEntryEdge: boolean,
-  movementDirection: 'north' | 'south' | 'east' | 'west'
+  movementDirection: 'north' | 'south' | 'east' | 'west',
+  laneLineOneWayOnly?: boolean
 ) => boolean;
 
 /**
@@ -142,32 +144,6 @@ export class PathfindingSystem {
       
       // Check if we reached the goal
       if (current.x === goalX && current.y === goalY) {
-        // #region agent log
-        if (entityType === 'vehicle') {
-          const path = this.reconstructPath(current);
-          // Check which moves in the final path cross lane lines
-          const pathCrossings: Array<{fromX:number,fromY:number,toX:number,toY:number,cost:number}> = [];
-          for (let i = 0; i < path.length; i++) {
-            const from = i === 0 ? {x: startX, y: startY} : path[i-1];
-            const to = path[i];
-            const dx = to.x - from.x;
-            const dy = to.y - from.y;
-            let direction: 'north' | 'south' | 'east' | 'west';
-            if (dx > 0) direction = 'east';
-            else if (dx < 0) direction = 'west';
-            else if (dy > 0) direction = 'south';
-            else direction = 'north';
-            // Note: We can't easily check the cost here without access to gridManager
-            // But we can at least identify which moves might be problematic
-            if (Math.abs(dx) > 0 && Math.abs(dy) > 0) {
-              // Diagonal move (shouldn't happen but log it)
-            }
-            pathCrossings.push({fromX:from.x,fromY:from.y,toX:to.x,toY:to.y,cost:0});
-          }
-          fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingSystem.ts:findPath',message:'Vehicle path found',data:{startX,startY,goalX,goalY,pathLength:path.length,totalCost:current.g,pathSample:path.slice(0,8),fullPath:path,pathMoves:pathCrossings},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-          return path;
-        }
-        // #endregion
         return this.reconstructPath(current);
       }
 
@@ -195,11 +171,6 @@ export class PathfindingSystem {
         const g = current.g + 1 + moveCostPenalty;
         const h = this.heuristic(neighborX, neighborY, goalX, goalY);
         const f = g + h;
-        // #region agent log
-        if (entityType === 'vehicle' && moveCostPenalty > 0) {
-          fetch('http://127.0.0.1:7244/ingest/6fbb61e2-7249-4cd1-bf12-64adf83a6ae2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'PathfindingSystem.ts:findPath',message:'Path step with lane penalty',data:{fromX:current.x,fromY:current.y,toX:neighborX,toY:neighborY,direction:dir.name,moveCostPenalty,currentG:current.g,newG:g,h,f},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'B'})}).catch(()=>{});
-        }
-        // #endregion
 
         // Check if this path to neighbor is better than any previous one
         const existingIndex = openSet.findIndex(n => n.x === neighborX && n.y === neighborY);
@@ -258,17 +229,12 @@ export class PathfindingSystem {
     // Determine which edges are crossed based on direction
     const edgesToCheck = this.getEdgesToCheck(fromX, fromY, direction);
     
-    for (const { cellX, cellY, edge, isCorridor } of edgesToCheck) {
-      // Skip edge checks for out-of-bounds cells (grid borders)
+    for (const { cellX, cellY, edge, isCorridor, laneLineOneWayOnly } of edgesToCheck) {
       if (!this.isInBounds(cellX, cellY)) {
         continue;
       }
-      
-      // For corridor edges, don't check parking spot borders - only fences/curbs/lane lines
-      // Parking spot borders only block direct entry into the parking spot cell
       const isEntryEdge = !isCorridor;
-      
-      if (this.isEdgeBlocked(cellX, cellY, edge, entityType, isEntryEdge, direction)) {
+      if (this.isEdgeBlocked(cellX, cellY, edge, entityType, isEntryEdge, direction, laneLineOneWayOnly)) {
         return false;
       }
     }
@@ -283,10 +249,10 @@ export class PathfindingSystem {
    * - Cell edges are: 0=top (NE diagonal), 1=right (SE diagonal), 2=bottom (SW diagonal), 3=left (NW diagonal)
    * - Cell vertices: top (north), right (east), bottom (south), left (west)
    * 
-   * Edge sharing between adjacent cells:
-   * - Top edge (0) of (x,y) = Bottom edge (2) of (x-1, y+1)
+   * Edge sharing between adjacent cells (must match GridManager.getAllPossibleBorderSegmentKeys):
+   * - Top edge (0) of (x,y) = Bottom edge (2) of (x, y-1)
    * - Right edge (1) of (x,y) = Left edge (3) of (x+1, y)
-   * - Bottom edge (2) of (x,y) = Top edge (0) of (x+1, y-1)
+   * - Bottom edge (2) of (x,y) = Top edge (0) of (x, y+1)
    * - Left edge (3) of (x,y) = Right edge (1) of (x-1, y)
    * 
    * Movement in screen space:
@@ -301,58 +267,44 @@ export class PathfindingSystem {
    * isCorridor flag: true for edges that are just "corridor walls" where we're
    * passing by, not entering. Parking spot borders should NOT block corridor edges.
    */
+  /**
+   * Edge on the vehicle's RIGHT when moving in the given direction.
+   * One-way rule: lane line must be on the left (drive on the right). So we block if there's a lane line on our right.
+   */
+  private static readonly RIGHT_EDGE_BY_DIRECTION: Record<'north' | 'south' | 'east' | 'west', number> = {
+    east: 2,  // bottom (south)
+    west: 0,  // top (north)
+    north: 1, // right (east)
+    south: 3, // left (west)
+  };
+
   private getEdgesToCheck(
     fromX: number,
     fromY: number,
     direction: 'north' | 'south' | 'east' | 'west'
-  ): { cellX: number; cellY: number; edge: number; isCorridor: boolean }[] {
-    const edges: { cellX: number; cellY: number; edge: number; isCorridor: boolean }[] = [];
+  ): { cellX: number; cellY: number; edge: number; isCorridor: boolean; laneLineOneWayOnly?: boolean }[] {
+    const edges: { cellX: number; cellY: number; edge: number; isCorridor: boolean; laneLineOneWayOnly?: boolean }[] = [];
 
     switch (direction) {
       case 'east':
-        // Moving from (x,y) to (x+1,y) - down-right in screen space
-        // Crosses right edge (1) of current cell = left edge (3) of target
-        // Check source cell's right edge (fence/curb/lane line)
         edges.push({ cellX: fromX, cellY: fromY, edge: 1, isCorridor: false });
-        // Also check target cell's left edge (3) for parking spot borders - this is the ENTRY EDGE
         edges.push({ cellX: fromX + 1, cellY: fromY, edge: 3, isCorridor: false });
+        edges.push({ cellX: fromX, cellY: fromY, edge: PathfindingSystem.RIGHT_EDGE_BY_DIRECTION.east, isCorridor: false, laneLineOneWayOnly: true });
         break;
-        
       case 'west':
-        // Moving from (x,y) to (x-1,y) - up-left in screen space
-        // Crosses left edge (3) of current cell = right edge (1) of target
-        // Check source cell's left edge (fence/curb/lane line)
         edges.push({ cellX: fromX, cellY: fromY, edge: 3, isCorridor: false });
-        // Also check target cell's right edge (1) for parking spot borders - this is the ENTRY EDGE
         edges.push({ cellX: fromX - 1, cellY: fromY, edge: 1, isCorridor: false });
+        edges.push({ cellX: fromX, cellY: fromY, edge: PathfindingSystem.RIGHT_EDGE_BY_DIRECTION.west, isCorridor: false, laneLineOneWayOnly: true });
         break;
-        
       case 'north':
-        // Moving from (x,y) to (x,y-1) - up-right in screen space
-        // The diagonal path travels through a corridor between cells.
-        // Only the ENTRY edge (bottom of target) should check parking spots.
-        // Other edges check fences/curbs only (isCorridor: true).
-        // NOTE: We don't check perpendicular edges (right/left faces) because they are
-        // on the pedestrian's sides and shouldn't block forward movement.
-        // Specifically, we don't check:
-        // - The right edge (east face, edge 1) of the source cell - on pedestrian's right side
-        // - Edges of adjacent cells (east/west) - perpendicular to movement direction
-        edges.push({ cellX: fromX, cellY: fromY, edge: 0, isCorridor: true }); // Top edge of source - fence/curb only
-        edges.push({ cellX: fromX, cellY: fromY - 1, edge: 2, isCorridor: false }); // Bottom edge of target - ENTRY EDGE
+        edges.push({ cellX: fromX, cellY: fromY, edge: 0, isCorridor: true });
+        edges.push({ cellX: fromX, cellY: fromY - 1, edge: 2, isCorridor: false });
+        edges.push({ cellX: fromX, cellY: fromY, edge: PathfindingSystem.RIGHT_EDGE_BY_DIRECTION.north, isCorridor: false, laneLineOneWayOnly: true });
         break;
-        
       case 'south':
-        // Moving from (x,y) to (x,y+1) - down-left in screen space
-        // The diagonal path travels through a corridor between cells.
-        // Only the ENTRY edge (top of target) should check parking spots.
-        // Other edges check fences/curbs only (isCorridor: true).
-        // NOTE: We don't check perpendicular edges (right/left faces) because they are
-        // on the pedestrian's sides and shouldn't block forward movement.
-        // Specifically, we don't check:
-        // - The left edge (west face, edge 3) of the source cell - on pedestrian's right side
-        // - Edges of adjacent cells (east/west) - perpendicular to movement direction
-        edges.push({ cellX: fromX, cellY: fromY, edge: 2, isCorridor: true }); // Bottom edge of source - fence/curb only
-        edges.push({ cellX: fromX, cellY: fromY + 1, edge: 0, isCorridor: false }); // Top edge of target - ENTRY EDGE
+        edges.push({ cellX: fromX, cellY: fromY, edge: 2, isCorridor: true });
+        edges.push({ cellX: fromX, cellY: fromY + 1, edge: 0, isCorridor: false });
+        edges.push({ cellX: fromX, cellY: fromY, edge: PathfindingSystem.RIGHT_EDGE_BY_DIRECTION.south, isCorridor: false, laneLineOneWayOnly: true });
         break;
     }
 
