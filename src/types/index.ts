@@ -14,6 +14,8 @@ export interface Challenge {
   descriptionSubline?: string;
   /** Optional heading for win conditions (e.g. "Win conditions by day 3:") */
   winConditionsHeading?: string;
+  /** Last day (1-based) to meet win conditions; checked at 11:59pm each day. Default 5 if omitted. */
+  maxDay?: number;
   lotSize: { width: number; height: number };
   budget: number;
   winConditions: WinCondition[];

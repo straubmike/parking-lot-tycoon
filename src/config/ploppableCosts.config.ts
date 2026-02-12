@@ -1,22 +1,23 @@
 /**
  * Cost in dollars for each ploppable type. Used when placing to deduct from budget.
- * Unknown types default to 0 (e.g. dev-only structures).
+ * Priced relative to dirt ($1/tile) baseline — material cost only, no labor/installation.
+ * Unknown types default to 0 (e.g. dev-only structures, tools like Pedestrian Spawner).
  */
 export const PLOPPABLE_COSTS: Record<string, number> = {
-  'Parking Spot': 200,
-  'Trash Can': 50,
-  'Vending Machine': 150,
-  'Dumpster': 200,
-  'Tree': 80,
+  'Flower Patch': 25,
   'Shrub': 40,
-  'Flower Patch': 30,
-  'Street Light': 120,
-  'Security Camera': 75,
-  'Portable Toilet': 100,
+  'Trash Can': 50,
   'Bench': 60,
+  'Parking Meter': 50,
+  'Security Camera': 75,
+  'Tree': 80,
+  'Portable Toilet': 100,
   'Speed Bump': 90,
   'Crosswalk': 110,
-  'Parking Meter': 50,
+  'Street Light': 120,
+  'Vending Machine': 150,
+  'Parking Spot': 5,  // Stall marking paint (~3 edges worth, like lane lines)
+  'Dumpster': 200,
   'Parking Booth': 300,
   'Pedestrian Spawner': 0,
 };

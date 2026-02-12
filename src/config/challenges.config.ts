@@ -39,7 +39,7 @@ export const CHALLENGES: Challenge[] = [
     name: 'Learning Lot',
     description: 'Build your first parking lot and learn the basics.',
     descriptionSubline: 'Playable grid: 10×10',
-    winConditionsHeading: 'Win conditions by day 3:',
+    maxDay: 3,
     lotSize: { width: 10, height: 12 },
     budget: 5000,
     initialGridPath: '/learninglot.json',
@@ -55,6 +55,7 @@ export const CHALLENGES: Challenge[] = [
     id: 'pizza-parking-problem',
     name: 'Pizza Parking Problem',
     description: 'Keep hungry customers happy with quick in-and-out parking.',
+    maxDay: 5,
     lotSize: { width: 12, height: 12 },
     budget: 8000,
     winConditions: [
@@ -75,6 +76,7 @@ export const CHALLENGES: Challenge[] = [
     id: 'rush-hour-roundabout',
     name: 'Rush Hour Roundabout',
     description: 'Handle the morning rush with efficient flow and safety.',
+    maxDay: 5,
     lotSize: { width: 14, height: 14 },
     budget: 12000,
     winConditions: [
@@ -89,6 +91,7 @@ export const CHALLENGES: Challenge[] = [
     id: 'drive-in-disaster',
     name: 'Drive-In Disaster',
     description: 'Save the drive-in by making the lot a destination.',
+    maxDay: 5,
     lotSize: { width: 16, height: 12 },
     budget: 15000,
     winConditions: [
@@ -109,6 +112,7 @@ export const CHALLENGES: Challenge[] = [
     id: 'airport-arrivals',
     name: 'Airport Arrivals',
     description: 'Manage long-term parkers and high volume at the airport lot.',
+    maxDay: 7,
     lotSize: { width: 18, height: 14 },
     budget: 25000,
     winConditions: [

@@ -190,10 +190,11 @@ export class SafetySystem {
   /**
    * Get safety contribution to rating (0-15 points)
    * Calculation:
-   * 1. Each cell with positive safety = 1, 0 or negative = 0 (boolean conversion)
+   * 1. Each non-permanent cell with positive safety = 1, 0 or negative = 0 (boolean conversion)
    * 2. Sum all boolean values
-   * 3. Divide by total number of cells (percentage of cells with positive safety)
+   * 3. Divide by total number of non-permanent cells (percentage of playable cells with positive safety)
    * 4. Multiply by 15
+   * Permanent tiles are excluded since players cannot plop on them.
    */
   getSafetyContribution(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
     let positiveCellCount = 0;
@@ -202,8 +203,8 @@ export class SafetySystem {
     for (let y = 0; y < gridHeight; y++) {
       for (let x = 0; x < gridWidth; x++) {
         const cellData = gridManager.getCellData(x, y);
+        if (cellData?.isPermanent) continue;
         const safety = cellData?.safety ?? 0;
-        // Positive safety = 1, 0 or negative = 0
         if (safety > 0) {
           positiveCellCount++;
         }
@@ -215,7 +216,6 @@ export class SafetySystem {
       return 0;
     }
     
-    // Calculate percentage and multiply by 15
     const percentage = positiveCellCount / totalCells;
     return percentage * 15;
   }

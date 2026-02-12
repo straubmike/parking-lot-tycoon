@@ -193,10 +193,11 @@ export class AppealSystem {
   /**
    * Get appeal contribution to rating (0-15 points)
    * Calculation:
-   * 1. Each cell with positive appeal = 1, 0 or negative = 0 (boolean conversion)
+   * 1. Each non-permanent cell with positive appeal = 1, 0 or negative = 0 (boolean conversion)
    * 2. Sum all boolean values
-   * 3. Divide by total number of cells (percentage of cells with positive appeal)
+   * 3. Divide by total number of non-permanent cells (percentage of playable cells with positive appeal)
    * 4. Multiply by 15
+   * Permanent tiles are excluded since players cannot plop on them.
    */
   getAppealContribution(gridManager: GridManager, gridWidth: number, gridHeight: number): number {
     let positiveCellCount = 0;
@@ -205,8 +206,8 @@ export class AppealSystem {
     for (let y = 0; y < gridHeight; y++) {
       for (let x = 0; x < gridWidth; x++) {
         const cellData = gridManager.getCellData(x, y);
+        if (cellData?.isPermanent) continue;
         const appeal = cellData?.appeal ?? 0;
-        // Positive appeal = 1, 0 or negative = 0
         if (appeal > 0) {
           positiveCellCount++;
         }
@@ -218,7 +219,6 @@ export class AppealSystem {
       return 0;
     }
     
-    // Calculate percentage and multiply by 15
     const percentage = positiveCellCount / totalCells;
     return percentage * 15;
   }

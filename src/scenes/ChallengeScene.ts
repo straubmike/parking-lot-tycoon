@@ -12,6 +12,8 @@ import { SafetySystem } from '@/systems/SafetySystem';
 import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
 import { getChallengeById, getSpawnIntervalMsForSchedule } from '@/config/challenges.config';
 import { getPloppableCost, DEMOLISH_REFUND_FRACTION } from '@/config/ploppableCosts.config';
+import { getSurfaceCost } from '@/config/surfaceCosts.config';
+import { getLineCost } from '@/config/lineCosts.config';
 import { ChallengeSystem } from '@/systems/ChallengeSystem';
 import { completeChallenge } from '@/managers/ProgressManager';
 import { LeaderboardSystem } from '@/systems/LeaderboardSystem';
@@ -134,11 +136,12 @@ export class ChallengeScene extends BaseGameplayScene {
     this.setupPermanentButton();
     this.setupRateInputHandler();
 
+    this.setupAppealVisualizationButton();
+    this.setupSafetyVisualizationButton();
+
     if (this.isDevMode) {
       this.setupExportImportButtons();
       this.setupGridResizeControls();
-      this.setupAppealVisualizationButton();
-      this.setupSafetyVisualizationButton();
       this.setDevOnlyToolsVisibility(true);
       GameSystems.rating.setDebugLogParkerFinalization(true);
     } else {
@@ -210,16 +213,23 @@ export class ChallengeScene extends BaseGameplayScene {
       super.update(time, delta);
       return;
     }
-    const metrics = this.gatherChallengeMetrics();
-    if (this.challengeSystem.checkWinConditions(metrics)) {
-      this.gameOverState = 'won';
-      completeChallenge(this.challengeId);
-      this.lastWinMetrics = {
-        profit: metrics.profit ?? 0,
-        rating: metrics.rating ?? 0,
-        currentDay: metrics.currentDay ?? 0,
-      };
-      this.showWinOverlay();
+    if (GameSystems.time.consumeRatingFinalized()) {
+      const metrics = this.gatherChallengeMetrics();
+      const maxDay = getChallengeById(this.challengeId)?.maxDay ?? 5;
+      const displayedDay = (GameSystems.time.getCurrentDay() ?? 0) + 1;
+      if (this.challengeSystem.checkWinConditions(metrics)) {
+        this.gameOverState = 'won';
+        completeChallenge(this.challengeId);
+        this.lastWinMetrics = {
+          profit: metrics.profit ?? 0,
+          rating: metrics.rating ?? 0,
+          currentDay: metrics.currentDay ?? 0,
+        };
+        this.showWinOverlay();
+      } else if (displayedDay >= maxDay) {
+        this.gameOverState = 'lost';
+        this.showTimeUpOverlay();
+      }
     }
     super.update(time, delta);
   }
@@ -279,6 +289,26 @@ export class ChallengeScene extends BaseGameplayScene {
     overlay.innerHTML = `
       <h2 style="margin-bottom:20px;font-size:28px;">Game Over</h2>
       <p style="margin-bottom:24px;">You ran out of money.</p>
+      <div style="display:flex;gap:16px;">
+        <button id="overlay-menu-btn" class="action-button" style="width:140px;">Menu</button>
+        <button id="overlay-retry-btn" class="action-button" style="width:140px;">Retry</button>
+      </div>
+    `;
+    container.appendChild(overlay);
+    document.getElementById('overlay-menu-btn')?.addEventListener('click', () => this.removeOverlayAndGoToMenu());
+    document.getElementById('overlay-retry-btn')?.addEventListener('click', () => this.removeOverlayAndRetry());
+  }
+
+  private showTimeUpOverlay(): void {
+    const container = document.getElementById('app-container');
+    if (!container || document.getElementById('game-overlay')) return;
+    const maxDay = getChallengeById(this.challengeId)?.maxDay ?? 5;
+    const overlay = document.createElement('div');
+    overlay.id = 'game-overlay';
+    overlay.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;color:#fff;font-family:sans-serif;';
+    overlay.innerHTML = `
+      <h2 style="margin-bottom:20px;font-size:28px;">Time's Up</h2>
+      <p style="margin-bottom:24px;">You didn't meet the win conditions by the end of day ${maxDay}.</p>
       <div style="display:flex;gap:16px;">
         <button id="overlay-menu-btn" class="action-button" style="width:140px;">Menu</button>
         <button id="overlay-retry-btn" class="action-button" style="width:140px;">Retry</button>
@@ -458,11 +488,10 @@ export class ChallengeScene extends BaseGameplayScene {
   }
 
   /**
-   * Override render to add appeal/safety visualization (dev mode only)
+   * Override render to add appeal/safety visualization overlay
    */
   protected render(): void {
     super.render();
-    if (!this.isDevMode) return;
     const shouldRender = this.showAppealVisualization || this.showSafetyVisualization;
     if (shouldRender) {
       this.renderAppealSafetyVisualization();
@@ -501,15 +530,13 @@ export class ChallengeScene extends BaseGameplayScene {
     for (let y = 0; y < this.gridHeight; y++) {
       for (let x = 0; x < this.gridWidth; x++) {
         const cellData = this.gridManager.getCellData(x, y);
+        if (cellData?.isPermanent) continue; // Skip permanent tiles - they don't contribute to ratings
         let value: number;
-        
         if (this.showAppealVisualization) {
           value = cellData?.appeal ?? 0;
         } else {
           value = cellData?.safety ?? 0;
         }
-        
-        // Convert to boolean: positive = 1 (green), 0 or negative = 0 (red)
         const isPositive = value > 0;
         const color = isPositive ? 0x00ff00 : 0xff0000; // Green or red
         const alpha = 0.3; // Semi-transparent overlay
@@ -857,19 +884,22 @@ export class ChallengeScene extends BaseGameplayScene {
       const existingEdgeColor = existingKey ? this.gridManager.getBorderSegment(existingKey) : undefined;
       
       // Toggle logic:
-      // - If a line exists with the selected color, remove it (toggle off)
-      // - Otherwise, add/update the line (toggle on)
+      // - If a line exists with the selected color, remove it (toggle off, no refund)
+      // - Otherwise, add/update the line (toggle on, charge for new line)
       if (existingKey && existingEdgeColor === this.selectedColor) {
-        // Toggle off: remove the existing line (works regardless of which cell's key it was stored under)
         this.gridManager.deleteBorderSegment(existingKey);
       } else {
-        // Toggle on: add or update the line
-        // If there's an existing key with a different color, remove it first (cleanup)
+        const lineCost = getLineCost(this.selectedColorName || '');
+        if (lineCost > 0) {
+          if (!GameSystems.economy.canAfford(lineCost)) {
+            GameSystems.messages.addSystemMessage(`Can't afford ${this.selectedColorName || 'line'} ($${lineCost}/edge).`, '💰');
+            return;
+          }
+          GameSystems.economy.spend(lineCost);
+        }
         if (existingKey && existingKey !== currentKey) {
           this.gridManager.deleteBorderSegment(existingKey);
         }
-        
-        // Add/update using current cell's key (matches what user sees)
         this.gridManager.setBorderSegment(currentKey, this.selectedColor);
       }
       
@@ -884,18 +914,30 @@ export class ChallengeScene extends BaseGameplayScene {
       if (this.lastPaintedCell && this.lastPaintedCell.x === gridX && this.lastPaintedCell.y === gridY) {
         return;
       }
-      
-      // Store the color and surface type in cell data
+
       const surfaceType = this.selectedColor !== null ? COLOR_TO_SURFACE[this.selectedColor] : undefined;
-      this.gridManager.setCellData(gridX, gridY, { 
+      if (!surfaceType) return; // Not a surface material (e.g. line color used in cell mode)
+
+      const cellData = this.gridManager.getCellData(gridX, gridY);
+      if (cellData?.isPermanent) return;
+
+      const currentSurface = cellData?.surfaceType;
+      if (currentSurface !== surfaceType) {
+        const cost = getSurfaceCost(surfaceType);
+        if (!GameSystems.economy.canAfford(cost)) {
+          GameSystems.messages.addSystemMessage(`Can't afford ${surfaceType} ($${cost}/tile).`, '💰');
+          return;
+        }
+        GameSystems.economy.spend(cost);
+      }
+
+      this.gridManager.setCellData(gridX, gridY, {
+        ...(cellData || {}),
         color: this.selectedColor,
         surfaceType: surfaceType
       });
-      
-      // Redraw the grid
+
       this.redrawGrid();
-      
-      // Remember last painted cell
       this.lastPaintedCell = { x: gridX, y: gridY };
     }
   }
@@ -1345,14 +1387,23 @@ export class ChallengeScene extends BaseGameplayScene {
       
       colorButtons.forEach((button) => {
         button.addEventListener('click', () => {
-          // Remove selected class from all buttons
+          const wasAlreadySelected = button.classList.contains('selected');
+          if (wasAlreadySelected) {
+            colorButtons.forEach(btn => btn.classList.remove('selected'));
+            ploppableButtons.forEach(btn => btn.classList.remove('selected'));
+            this.selectedColor = null;
+            this.selectedColorName = null;
+            this.selectedColorDescription = null;
+            this.isLineMode = false;
+            this.selectedPloppableType = null;
+            this.clearVisualizationModes();
+            this.clearHighlight();
+            this.updateSelectionInfo();
+            return;
+          }
           colorButtons.forEach(btn => btn.classList.remove('selected'));
           ploppableButtons.forEach(btn => btn.classList.remove('selected'));
-          
-          // Add selected class to clicked button
           button.classList.add('selected');
-          
-          // Clear ploppable selection
           this.selectedPloppableType = null;
           
           // Clear vehicle spawner mode
@@ -1414,14 +1465,24 @@ export class ChallengeScene extends BaseGameplayScene {
       // Handle ploppable button clicks
       ploppableButtons.forEach((button) => {
         button.addEventListener('click', () => {
-          // Remove selected class from all buttons
+          const ploppableName = button.getAttribute('data-name') || null;
+          const wasAlreadySelected = this.selectedPloppableType === ploppableName;
+          if (wasAlreadySelected) {
+            colorButtons.forEach(btn => btn.classList.remove('selected'));
+            ploppableButtons.forEach(btn => btn.classList.remove('selected'));
+            this.selectedColor = null;
+            this.selectedColorName = null;
+            this.selectedColorDescription = null;
+            this.isLineMode = false;
+            this.selectedPloppableType = null;
+            this.clearVisualizationModes();
+            this.clearHighlight();
+            this.updateSelectionInfo();
+            return;
+          }
           colorButtons.forEach(btn => btn.classList.remove('selected'));
           ploppableButtons.forEach(btn => btn.classList.remove('selected'));
-          
-          // Add selected class to clicked button
           button.classList.add('selected');
-          
-          // Clear color/line selection
           this.selectedColor = null;
           this.selectedColorName = null;
           this.selectedColorDescription = null;
@@ -1478,13 +1539,22 @@ export class ChallengeScene extends BaseGameplayScene {
     const selectionInfo = document.getElementById('selection-info');
     const colorPreview = document.getElementById('selection-color-preview');
     const selectionName = document.getElementById('selection-name');
+    const selectionPrice = document.getElementById('selection-price');
     const selectionDescription = document.getElementById('selection-description');
     const selectionInstructions = document.getElementById('selection-instructions');
     const rateInputContainer = document.getElementById('selection-rate-input-container');
     const rateInput = document.getElementById('parking-rate-input') as HTMLInputElement;
 
+    const setPrice = (text: string) => {
+      if (selectionPrice) {
+        selectionPrice.textContent = text;
+        selectionPrice.style.display = text ? 'block' : 'none';
+      }
+    };
+
     if (this.isVehicleSpawnerMode) {
-      // Show vehicle spawner info
+      setPrice('');
+      if (rateInputContainer) rateInputContainer.style.display = 'none';
       if (selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
         colorPreview.style.display = 'none';
         selectionInstructions.style.display = 'none';
@@ -1498,7 +1568,8 @@ export class ChallengeScene extends BaseGameplayScene {
         selectionInfo.style.display = 'block';
       }
     } else if (this.isDemolishMode) {
-      // Show demolish mode info
+      setPrice('');
+      if (rateInputContainer) rateInputContainer.style.display = 'none';
       if (selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
         colorPreview.style.display = 'none';
         selectionInstructions.style.display = 'none';
@@ -1507,9 +1578,9 @@ export class ChallengeScene extends BaseGameplayScene {
         selectionInfo.style.display = 'block';
       }
     } else if (this.selectedPloppableType) {
-      // Show ploppable info
+      const ploppableCost = getPloppableCost(this.selectedPloppableType);
+      setPrice(ploppableCost > 0 ? `$${ploppableCost}` : 'Free');
       if (selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
-        // Hide color preview for ploppables
         colorPreview.style.display = 'none';
         selectionName.textContent = this.selectedPloppableType;
         
@@ -1539,6 +1610,9 @@ export class ChallengeScene extends BaseGameplayScene {
           if (this.selectedPloppableType === 'Security Camera') {
             instructions = 'Can only be placed on cells that already contain a Street Light.';
           }
+          if (this.selectedPloppableType === 'Parking Spot') {
+            instructions = 'Can only be placed on dirt, gravel, or asphalt. Use Q and E to rotate.';
+          }
           if (this.selectedPloppableType === 'Parking Meter') {
             instructions = 'Can only be placed on cells that already contain a Parking Spot.';
           }
@@ -1563,19 +1637,31 @@ export class ChallengeScene extends BaseGameplayScene {
         
         selectionInfo.style.display = 'block';
       }
-    } else if (this.selectedColor !== null && selectionInfo && colorPreview && selectionName && selectionDescription) {
-      // Show color/line info
+    } else if (this.selectedColor !== null && selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
+      if (rateInputContainer) rateInputContainer.style.display = 'none';
+      selectionInstructions.textContent = '';
+      selectionInstructions.style.display = 'none';
+      const surfaceType = COLOR_TO_SURFACE[this.selectedColor];
+      if (this.isLineMode) {
+        const lineCost = getLineCost(this.selectedColorName || '');
+        setPrice(lineCost > 0 ? `$${lineCost} per edge` : 'Free');
+      } else if (!surfaceType) {
+        setPrice('Free');
+      } else {
+        const cost = getSurfaceCost(surfaceType);
+        setPrice(`$${cost} per tile`);
+      }
       colorPreview.style.display = 'block';
-      // Convert hex number to hex string for CSS
       const colorHexString = '#' + this.selectedColor.toString(16).padStart(6, '0');
-      
       colorPreview.style.backgroundColor = colorHexString;
       selectionName.textContent = this.selectedColorName || 'Unknown';
       selectionDescription.textContent = this.selectedColorDescription || '';
-      
       selectionInfo.style.display = 'block';
-    } else if (selectionInfo) {
-      selectionInfo.style.display = 'none';
+    } else {
+      setPrice('');
+      if (selectionInfo) {
+        selectionInfo.style.display = 'none';
+      }
     }
   }
 

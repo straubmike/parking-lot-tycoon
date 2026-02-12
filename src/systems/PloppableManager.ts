@@ -218,6 +218,14 @@ export class PloppableManager {
       return false;
     }
     
+    // Parking Spot can only be placed on dirt, gravel, asphalt, or tiles with no surface data
+    if (ploppableType === 'Parking Spot') {
+      const surfaceType = cellData?.surfaceType;
+      if (surfaceType !== undefined && surfaceType !== 'dirt' && surfaceType !== 'gravel' && surfaceType !== 'asphalt') {
+        return false;
+      }
+    }
+
     // Crosswalk can only be placed on asphalt tiles
     if (ploppableType === 'Crosswalk') {
       if (cellData?.surfaceType !== 'asphalt') {

@@ -431,7 +431,7 @@
             </div>
             <div class="stat-item">
                 <span class="stat-label">Day</span>
-                <span id="game-day" class="stat-value">0</span>
+                <span id="game-day" class="stat-value">1</span>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Budget</span>
@@ -496,12 +496,12 @@
             <div class="section-title">Tools</div>
             <button id="back-to-menu-button" class="action-button">Menu</button>
             <button id="demolish-button" class="action-button">💣 Demolish</button>
+            <button id="appeal-visualization-button" class="action-button">Appeal</button>
+            <button id="safety-visualization-button" class="action-button">Safety</button>
             <div id="dev-only-tools">
                 <button id="vehicle-spawner-button" class="action-button">🚗 Vehicle Spawner</button>
                 <button id="pedestrian-spawner-button" class="action-button">🚶 Pedestrian De/Respawner</button>
                 <button id="permanent-button" class="action-button">Mark Permanent</button>
-                <button id="appeal-visualization-button" class="action-button">Appeal</button>
-                <button id="safety-visualization-button" class="action-button">Safety</button>
                 <div class="section-title" style="margin-top: 20px;">Grid Size</div>
                 <div style="display: flex; gap: 5px; margin-bottom: 10px;">
                     <div style="flex: 1;">
@@ -525,7 +525,8 @@
             <div id="selection-info" style="display: none;">
                 <div class="section-title">Selection Info</div>
                 <div id="selection-color-preview" style="width: 100%; height: 60px; border: 2px solid #555; border-radius: 4px; margin-bottom: 15px;"></div>
-                <div id="selection-name" style="color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 10px;"></div>
+                <div id="selection-name" style="color: #fff; font-size: 18px; font-weight: bold; margin-bottom: 5px;"></div>
+                <div id="selection-price" style="color: #aaa; font-size: 14px; margin-bottom: 10px; display: none;"></div>
                 <div id="selection-description" style="color: #ccc; font-size: 14px; line-height: 1.5;"></div>
                 <div id="selection-instructions" style="color: #999; font-size: 12px; font-style: italic; margin-top: 8px; display: none;"></div>
                 <div id="selection-rate-input-container" style="margin-top: 15px; display: none;">

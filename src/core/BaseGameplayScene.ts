@@ -352,7 +352,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       clockEl.textContent = GameSystems.time.getTimeString();
     }
     if (dayEl) {
-      dayEl.textContent = GameSystems.time.getCurrentDay().toString();
+      dayEl.textContent = (GameSystems.time.getCurrentDay() + 1).toString();
     }
     if (budgetEl) {
       budgetEl.textContent = `$${GameSystems.economy.getMoney().toLocaleString()}`;

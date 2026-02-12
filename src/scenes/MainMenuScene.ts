@@ -149,7 +149,8 @@ export class MainMenuScene extends Phaser.Scene {
     if (challenge.winConditions.length > 0) {
       const conditions = document.createElement('div');
       conditions.className = 'challenge-card-conditions';
-      conditions.textContent = challenge.winConditionsHeading ?? 'Win conditions:';
+      const maxDay = challenge.maxDay ?? 5;
+      conditions.textContent = `Win conditions by the end of day ${maxDay}:`;
       const ul = document.createElement('ul');
       for (const wc of challenge.winConditions) {
         const li = document.createElement('li');

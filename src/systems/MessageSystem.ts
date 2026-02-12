@@ -89,21 +89,27 @@ export class MessageSystem {
     // Create messages panel
     const messagesPanel = document.createElement('div');
     messagesPanel.id = 'messages-panel';
+    const messageBoxHeight = '50vh';
     messagesPanel.innerHTML = `
       <div class="section-title" style="margin-top: 0; margin-bottom: 10px;">Messages</div>
       <div id="tutorial-step-container" style="
         display: none;
+        height: ${messageBoxHeight};
+        min-height: 180px;
         margin-bottom: 15px;
         padding: 12px;
         background: #1a1a1a;
         border: 1px solid #4a4a4a;
         border-radius: 4px;
+        overflow-y: auto;
+        box-sizing: border-box;
       ">
         <div id="tutorial-step-text" style="color: #ddd; font-size: 13px; line-height: 1.5; margin-bottom: 12px;"></div>
         <button type="button" id="tutorial-ok-button" class="action-button" style="margin-bottom: 0;">OK</button>
       </div>
       <div id="messages-container" style="
-        height: 200px;
+        height: ${messageBoxHeight};
+        min-height: 180px;
         overflow-y: auto;
         background: #1a1a1a;
         border: 1px solid #3a3a3a;
@@ -112,6 +118,7 @@ export class MessageSystem {
         margin-bottom: 15px;
         font-size: 11px;
         line-height: 1.4;
+        box-sizing: border-box;
       "></div>
     `;
 
