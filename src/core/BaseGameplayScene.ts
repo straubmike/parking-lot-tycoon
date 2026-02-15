@@ -297,7 +297,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   }
 
   /**
-   * Setup game stats UI interactions (mouseover for rating expansion)
+   * Setup game stats UI interactions (mouseover for rating expansion, speed buttons)
    */
   protected setupGameStatsUI(): void {
     const gameStatsEl = document.getElementById('game-stats');
@@ -309,6 +309,70 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         gameStatsEl.classList.remove('expanded');
       });
     }
+
+    const pauseBtn = document.getElementById('speed-pause');
+    const speed1xBtn = document.getElementById('speed-1x');
+    const speed2xBtn = document.getElementById('speed-2x');
+    const speed4xBtn = document.getElementById('speed-4x');
+
+    const updateSpeedButtonState = (): void => this.updateSpeedButtonState();
+
+    pauseBtn?.addEventListener('click', () => {
+      GameSystems.time.setPaused(true);
+      updateSpeedButtonState();
+    });
+    speed1xBtn?.addEventListener('click', () => {
+      GameSystems.time.setPaused(false);
+      GameSystems.time.setSpeedMultiplier(1);
+      updateSpeedButtonState();
+    });
+    speed2xBtn?.addEventListener('click', () => {
+      GameSystems.time.setPaused(false);
+      GameSystems.time.setSpeedMultiplier(2);
+      updateSpeedButtonState();
+    });
+    speed4xBtn?.addEventListener('click', () => {
+      GameSystems.time.setPaused(false);
+      GameSystems.time.setSpeedMultiplier(4);
+      updateSpeedButtonState();
+    });
+
+    document.getElementById('day-plus')?.addEventListener('click', () => {
+      GameSystems.time.setCurrentDay(GameSystems.time.getCurrentDay() + 1);
+    });
+    document.getElementById('day-minus')?.addEventListener('click', () => {
+      const day = GameSystems.time.getCurrentDay();
+      if (day > 0) GameSystems.time.setCurrentDay(day - 1);
+    });
+    document.getElementById('hour-plus')?.addEventListener('click', () => {
+      GameSystems.time.addHours(1);
+    });
+    document.getElementById('hour-minus')?.addEventListener('click', () => {
+      GameSystems.time.addHours(-1);
+    });
+
+    this.updateSpeedButtonState();
+  }
+
+  /**
+   * Sync pause/speed button appearance with TimeSystem state (e.g. after challenge code changes it).
+   */
+  protected updateSpeedButtonState(): void {
+    const pauseBtn = document.getElementById('speed-pause');
+    const speed1xBtn = document.getElementById('speed-1x');
+    const speed2xBtn = document.getElementById('speed-2x');
+    const speed4xBtn = document.getElementById('speed-4x');
+    const time = GameSystems.time;
+    const paused = time.isPaused();
+    const mult = time.getSpeedMultiplier();
+    pauseBtn?.classList.toggle('speed-paused', paused);
+    pauseBtn?.classList.toggle('speed-active', false);
+    speed1xBtn?.classList.toggle('speed-active', !paused && mult === 1);
+    speed1xBtn?.classList.remove('speed-paused');
+    speed2xBtn?.classList.toggle('speed-active', !paused && mult === 2);
+    speed2xBtn?.classList.remove('speed-paused');
+    speed4xBtn?.classList.toggle('speed-active', !paused && mult === 4);
+    speed4xBtn?.classList.remove('speed-paused');
   }
 
   /**
@@ -318,8 +382,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     // Update central game systems (time, rating triggers, etc.)
     GameSystems.update(delta, this.gridManager, this.gridWidth, this.gridHeight);
     
-    // Update entity systems
-    this.updateEntities(delta);
+    // Entity systems use scaled delta so movement, spawn timers, parking, and pedestrian respawn respect game speed
+    const scaledDelta = GameSystems.time.getScaledDelta(delta);
+    this.updateEntities(scaledDelta);
     
     // Update UI
     this.updateUI();
@@ -392,6 +457,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         safetyEl.textContent = `${safetyContribution}/15`;
       }
     }
+    this.updateSpeedButtonState();
   }
 
   /**

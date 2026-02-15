@@ -102,10 +102,11 @@ export class GameSystems {
    */
   static update(delta: number, gridManager?: GridManager, gridWidth?: number, gridHeight?: number): void {
     this.time.update(delta);
-    this.parkingTimer.update(delta);
+    const scaledDelta = this.time.getScaledDelta(delta);
+    this.parkingTimer.update(scaledDelta);
     
-    // Check for 11:59 PM rating finalization
-    if (this.time.consumeRatingFinalized()) {
+    // Check for 11:59 PM rating finalization (peek only; ChallengeScene consumes and shows win/lose overlay)
+    if (this.time.peekRatingFinalized()) {
       this.rating.finalizeDay(gridManager, gridWidth, gridHeight);
     }
     

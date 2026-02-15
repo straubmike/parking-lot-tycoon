@@ -91,8 +91,13 @@ export class GridEditorController {
   }
 
   setDevOnlyToolsVisibility(visible: boolean): void {
-    const el = document.getElementById('dev-only-tools');
-    if (el) (el as HTMLElement).style.display = visible ? '' : 'none';
+    const toolsEl = document.getElementById('dev-only-tools');
+    if (toolsEl) (toolsEl as HTMLElement).style.display = visible ? '' : 'none';
+    const dayEl = document.getElementById('day-dev-controls');
+    const hourEl = document.getElementById('hour-dev-controls');
+    const display = visible ? 'flex' : 'none';
+    if (dayEl) (dayEl as HTMLElement).style.display = display;
+    if (hourEl) (hourEl as HTMLElement).style.display = display;
   }
 
   renderVisualization(): void {

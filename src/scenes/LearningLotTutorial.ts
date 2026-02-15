@@ -43,6 +43,8 @@ export class LearningLotTutorial implements ChallengeBehavior {
       leftPanel.appendChild(this.leftPanelOverlay);
     }
 
+    this.setSpeedButtonsEnabled(false);
+
     const step = LEARNING_LOT_TUTORIAL_STEPS[0];
     GameSystems.messages.showTutorialStep(step.text, () => this.advance());
   }
@@ -66,6 +68,7 @@ export class LearningLotTutorial implements ChallengeBehavior {
     this.stepIndex++;
     if (this.stepIndex >= LEARNING_LOT_TUTORIAL_STEPS.length) {
       this.active = false;
+      this.setSpeedButtonsEnabled(true);
       if (this.context) {
         this.context.getTimeSystem().setPaused(false);
         this.context.getVehicleSystem().setSpawnPaused(false);
@@ -84,6 +87,16 @@ export class LearningLotTutorial implements ChallengeBehavior {
     }
     const step = LEARNING_LOT_TUTORIAL_STEPS[this.stepIndex];
     GameSystems.messages.showTutorialStep(step.text, () => this.advance());
+  }
+
+  private setSpeedButtonsEnabled(enabled: boolean): void {
+    const ids = ['speed-pause', 'speed-1x', 'speed-2x', 'speed-4x'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el instanceof HTMLButtonElement) {
+        el.disabled = !enabled;
+      }
+    });
   }
 
   private drawTutorialHighlight(type: TutorialHighlightType): void {

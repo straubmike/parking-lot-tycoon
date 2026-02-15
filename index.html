@@ -270,6 +270,92 @@
             color: rgba(255, 138, 101, 1);
         }
 
+        #speed-controls {
+            display: none;
+            flex-direction: row;
+            gap: 6px;
+            margin-top: 8px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #game-stats.expanded #speed-controls {
+            display: flex;
+        }
+
+        .speed-btn {
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 6px;
+            color: #ccc;
+            font-size: 14px;
+            font-weight: bold;
+            padding: 4px 10px;
+            cursor: pointer;
+            min-width: 36px;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .speed-btn:hover {
+            background: #4a4a4a;
+            color: #fff;
+            border-color: #4fc3f7;
+        }
+
+        .speed-btn.speed-active {
+            background: #1a5f7a;
+            border-color: #4fc3f7;
+            color: #fff;
+        }
+
+        .speed-btn.speed-paused {
+            background: #5a3a1a;
+            border-color: #ffd54f;
+            color: #fff;
+        }
+
+        .speed-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        .dev-only {
+            display: none;
+        }
+
+        .stat-dev-controls {
+            flex-direction: row;
+            gap: 6px;
+            margin-top: 6px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #game-stats.expanded .stat-dev-controls {
+            display: flex;
+        }
+
+        .dev-small-btn {
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 6px;
+            color: #ccc;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 2px 8px;
+            cursor: pointer;
+            min-width: 28px;
+            line-height: 1.2;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .dev-small-btn:hover {
+            background: #4a4a4a;
+            color: #fff;
+            border-color: #81c784;
+        }
+
         /* Main menu overlay - fixed to viewport so it always fills the screen */
         #main-menu-overlay {
             position: fixed;
@@ -428,10 +514,26 @@
             <div class="stat-item">
                 <span class="stat-label">Time</span>
                 <span id="game-clock" class="stat-value">12:00 AM</span>
+                <div id="speed-controls">
+                    <button type="button" id="speed-pause" class="speed-btn" title="Pause">⏸</button>
+                    <button type="button" id="speed-1x" class="speed-btn speed-active" title="1x speed">▶</button>
+                    <button type="button" id="speed-2x" class="speed-btn" title="2x speed">2×</button>
+                    <button type="button" id="speed-4x" class="speed-btn" title="4x speed">4×</button>
+                </div>
+                <!-- Dev mode only: hour ± (speed buttons above are shown in all challenges) -->
+                <div id="hour-dev-controls" class="dev-only stat-dev-controls">
+                    <button type="button" id="hour-minus" class="dev-small-btn" title="Previous hour">−</button>
+                    <button type="button" id="hour-plus" class="dev-small-btn" title="Next hour">+</button>
+                </div>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Day</span>
                 <span id="game-day" class="stat-value">1</span>
+                <!-- Dev mode only: day ± -->
+                <div id="day-dev-controls" class="dev-only stat-dev-controls">
+                    <button type="button" id="day-minus" class="dev-small-btn" title="Previous day">−</button>
+                    <button type="button" id="day-plus" class="dev-small-btn" title="Next day">+</button>
+                </div>
             </div>
             <div class="stat-item">
                 <span class="stat-label">Budget</span>

@@ -159,8 +159,9 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
   }
 
   update(time: number, delta: number): void {
+    const scaledDelta = GameSystems.time.getScaledDelta(delta);
     if (this.challengeBehavior?.isActive()) {
-      this.challengeBehavior.update(delta);
+      this.challengeBehavior.update(scaledDelta);
     }
     this.tools.updatePointer(this.input.activePointer);
     if (this.gameOverState !== 'playing') {
@@ -178,6 +179,8 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
       super.update(time, delta);
       return;
     }
+    super.update(time, delta);
+    // After clock update: consume rating-finalized flag (set at 11:59 PM) and show win/lose overlay
     if (GameSystems.time.consumeRatingFinalized()) {
       const metrics = this.gatherChallengeMetrics();
       const maxDay = getChallengeById(this.challengeId)?.maxDay ?? 5;
@@ -196,7 +199,6 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
         this.showTimeUpOverlay();
       }
     }
-    super.update(time, delta);
   }
 
   private gatherChallengeMetrics(): { profit?: number; rating?: number; currentDay?: number; parkingSpotCount?: number; ploppableCountByType?: Record<string, number> } {
