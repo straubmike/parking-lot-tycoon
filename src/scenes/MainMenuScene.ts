@@ -8,6 +8,7 @@ import { setGameUIVisibility } from '@/utils/menuVisibility';
 import { getChallengeById, getChallengesInOrder } from '@/config/challenges.config';
 import { LeaderboardSystem } from '@/systems/LeaderboardSystem';
 import { Challenge } from '@/types';
+import aboutText from '../../about.txt?raw';
 
 const CHALLENGE_DISPLAY_NAMES: Record<string, string> = {
   'dev-mode': 'Dev Mode',
@@ -61,8 +62,13 @@ export class MainMenuScene extends Phaser.Scene {
     leaderboardTab.className = 'main-menu-tab';
     leaderboardTab.textContent = 'Leaderboard';
     leaderboardTab.type = 'button';
+    const aboutTab = document.createElement('button');
+    aboutTab.className = 'main-menu-tab';
+    aboutTab.textContent = 'About';
+    aboutTab.type = 'button';
     tabs.appendChild(playTab);
     tabs.appendChild(leaderboardTab);
+    tabs.appendChild(aboutTab);
     overlay.appendChild(tabs);
 
     // Body: two panels
@@ -81,21 +87,23 @@ export class MainMenuScene extends Phaser.Scene {
     leaderboardPanel.appendChild(this.buildLeaderboardTabContent());
     body.appendChild(leaderboardPanel);
 
+    const aboutPanel = document.createElement('div');
+    aboutPanel.id = 'about-tab-panel';
+    aboutPanel.className = 'tab-panel';
+    aboutPanel.appendChild(this.buildAboutContent());
+    body.appendChild(aboutPanel);
+
     overlay.appendChild(body);
 
-    // Tab switching
-    playTab.addEventListener('click', () => {
-      playTab.classList.add('active');
-      leaderboardTab.classList.remove('active');
-      playPanel.classList.add('active');
-      leaderboardPanel.classList.remove('active');
-    });
-    leaderboardTab.addEventListener('click', () => {
-      leaderboardTab.classList.add('active');
-      playTab.classList.remove('active');
-      leaderboardPanel.classList.add('active');
-      playPanel.classList.remove('active');
-    });
+    const allTabs = [playTab, leaderboardTab, aboutTab];
+    const allPanels = [playPanel, leaderboardPanel, aboutPanel];
+    const activateTab = (index: number) => {
+      allTabs.forEach((t, i) => t.classList.toggle('active', i === index));
+      allPanels.forEach((p, i) => p.classList.toggle('active', i === index));
+    };
+    playTab.addEventListener('click', () => activateTab(0));
+    leaderboardTab.addEventListener('click', () => activateTab(1));
+    aboutTab.addEventListener('click', () => activateTab(2));
 
     container.appendChild(overlay);
   }
@@ -241,6 +249,23 @@ export class MainMenuScene extends Phaser.Scene {
     renderList('');
     select.addEventListener('change', () => renderList(select.value));
     wrap.appendChild(listDiv);
+
+    return wrap;
+  }
+
+  private buildAboutContent(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'about-panel';
+
+    const paragraphs = aboutText.split('\n\n');
+    for (const para of paragraphs) {
+      const trimmed = para.trim();
+      if (!trimmed) continue;
+      const p = document.createElement('p');
+      p.className = 'about-paragraph';
+      p.textContent = trimmed;
+      wrap.appendChild(p);
+    }
 
     return wrap;
   }

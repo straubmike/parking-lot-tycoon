@@ -1,0 +1,8 @@
+Hello, my name is Mike.
+I created Parking Lot Tycoon for fun and as an experiment. This game was coded entirely using AI agents through Cursor.
+
+The graphics were obtained from freepik.com by the author marcovector under a free license.
+
+I've always liked game design, but the entry barriers for making videos games has always been very steep. It remarkable how AI tools have alleviated this. For that reason, I host my game for free.
+
+However, I'd like to develop my ideas more, and through funding I may be able to do so. If you enjoyed Parking Lot Tycoon and would like to support my hobby, I accept donations through this bitcoin address: bc1q373dfyw4mmtkq4j38t584z3cla9p4nxuf5e4q6
