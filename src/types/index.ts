@@ -134,6 +134,8 @@ export interface Vehicle {
   sidewalkMessageShown?: boolean; // True if sidewalk message was already shown
   /** When true, we spawned a pedestrian for this vehicle (wait for at_vehicle to leave). When false, driver stayed in car (leave when timer expires). */
   pedestrianSpawned?: boolean;
+  /** Sprite variant index (0-based). Determines which car art set is used (e.g. 0 = car1, 1 = car2). Assigned at spawn, stays constant for the vehicle's lifetime. */
+  spriteVariant?: number;
 }
 
 export interface SpawnerDespawnerPair {

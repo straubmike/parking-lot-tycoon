@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
-import { TILE_WIDTH, TILE_HEIGHT, DEBUG_PATH_LANE_CHECK, DEBUG_LOG_VEHICLE_PATHS_AND_LANES } from '@/config/game.config';
+import { TILE_WIDTH, TILE_HEIGHT, VEHICLE_SPRITE_SCALE, DEBUG_PATH_LANE_CHECK, DEBUG_LOG_VEHICLE_PATHS_AND_LANES } from '@/config/game.config';
 import { GridManager } from './GridManager';
 import { GridRenderer } from '@/systems/GridRenderer';
 import { PloppableManager } from '@/systems/PloppableManager';
 import { SpawnerManager } from '@/managers/SpawnerManager';
-import { EntityRenderer } from '@/renderers/EntityRenderer';
+import { EntityRenderer, VEHICLE_TEXTURE_UP, VEHICLE_VARIANTS } from '@/renderers/EntityRenderer';
 import { PathfindingUtilities } from '@/utils/PathfindingUtilities';
 import { VehicleSystem } from '@/systems/VehicleSystem';
 import { PedestrianSystem } from '@/systems/PedestrianSystem';
@@ -48,6 +48,10 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected highlightGraphics!: Phaser.GameObjects.Graphics;
   protected vehicleGraphics!: Phaser.GameObjects.Graphics;
   protected pedestrianGraphics!: Phaser.GameObjects.Graphics;
+
+  /** Pool of vehicle sprites (car1u/car1d); size should be >= max concurrent vehicles. */
+  protected vehicleSpritePool: Phaser.GameObjects.Sprite[] = [];
+  private static readonly VEHICLE_POOL_SIZE = 64;
   
   // Labels for cleanup
   protected permanentLabels: Phaser.GameObjects.Text[] = [];
@@ -61,6 +65,13 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     super(config);
     this.gridWidth = gridWidth;
     this.gridHeight = gridHeight ?? gridWidth; // Default to square if height not provided
+  }
+
+  preload(): void {
+    for (const [upKey, downKey] of VEHICLE_VARIANTS) {
+      this.load.image(upKey, `/assets/vehicles/${upKey}.png`);
+      this.load.image(downKey, `/assets/vehicles/${downKey}.png`);
+    }
   }
 
   create(): void {
@@ -142,10 +153,19 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     this.highlightGraphics = this.add.graphics();
     this.highlightGraphics.setDepth(2);
     
-    // Create graphics object for vehicles - drawn on top of grid but below highlights
+    // Create graphics object for vehicles (fallback/debug; primary drawing is via vehicleSpritePool)
     this.vehicleGraphics = this.add.graphics();
     this.vehicleGraphics.setDepth(1.8);
-    
+
+    // Vehicle sprite pool: one sprite per slot, updated each frame by renderEntities
+    for (let i = 0; i < BaseGameplayScene.VEHICLE_POOL_SIZE; i++) {
+      const sprite = this.add.sprite(0, 0, VEHICLE_TEXTURE_UP);
+      sprite.setVisible(false);
+      sprite.setDepth(1.8);
+      sprite.setOrigin(0.5, 0.5); // mid-center for alignment with grid tile center
+      this.vehicleSpritePool.push(sprite);
+    }
+
     // Create graphics object for pedestrians - drawn on top of grid but below highlights
     this.pedestrianGraphics = this.add.graphics();
     this.pedestrianGraphics.setDepth(1.85);
@@ -635,13 +655,28 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    */
   protected renderEntities(): void {
     const vehicles = this.vehicleSystem.getVehicles();
-    EntityRenderer.drawVehicles(
-      vehicles,
-      this.vehicleGraphics,
-      this.gridOffsetX,
-      this.gridOffsetY
-    );
-    
+    this.vehicleGraphics.clear();
+    vehicles.forEach((vehicle, i) => {
+      const sprite = this.vehicleSpritePool[i];
+      if (!sprite) return;
+      const params = EntityRenderer.getVehicleDrawParams(
+        vehicle,
+        this.gridOffsetX,
+        this.gridOffsetY
+      );
+      sprite.setPosition(params.x, params.y);
+      sprite.setTexture(params.textureKey);
+      sprite.setFlipX(params.flipX);
+      const targetWidth = TILE_WIDTH * VEHICLE_SPRITE_SCALE * params.scaleMultiplier;
+      if (sprite.width > 0) {
+        sprite.setScale(targetWidth / sprite.width);
+      }
+      sprite.setVisible(true);
+    });
+    for (let i = vehicles.length; i < BaseGameplayScene.VEHICLE_POOL_SIZE; i++) {
+      this.vehicleSpritePool[i].setVisible(false);
+    }
+
     const pedestrians = this.pedestrianSystem.getActivePedestrians();
     EntityRenderer.drawPedestrians(
       pedestrians,

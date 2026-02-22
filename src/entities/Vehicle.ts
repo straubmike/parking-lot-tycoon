@@ -23,6 +23,7 @@ export class VehicleEntity implements Vehicle {
   parkingDuration?: number;
   concreteTileCount?: number;
   sidewalkMessageShown?: boolean;
+  spriteVariant?: number;
 
   constructor(
     spawnerX: number,
@@ -31,7 +32,8 @@ export class VehicleEntity implements Vehicle {
     despawnerY: number,
     path: { x: number; y: number }[],
     speed: number,
-    isPotentialParker: boolean = false
+    isPotentialParker: boolean = false,
+    spriteVariant: number = 0
   ) {
     this.id = `vehicle-${Date.now()}-${Math.random()}`;
     this.spawnerX = spawnerX;
@@ -54,6 +56,7 @@ export class VehicleEntity implements Vehicle {
     // Initialize concrete tile counter
     this.concreteTileCount = 0;
     this.sidewalkMessageShown = false;
+    this.spriteVariant = spriteVariant;
     
     // Generate a name for potential parkers
     if (isPotentialParker) {

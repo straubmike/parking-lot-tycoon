@@ -5,11 +5,91 @@ import { PedestrianEntity } from '@/entities/Pedestrian';
 import { isoToScreen } from '@/utils/isometric';
 
 /**
+ * Vehicle sprite variants. Each entry is [upTextureKey, downTextureKey, scale].
+ * "Up" = screen-Y decreasing (nose top-left); "down" = screen-Y increasing (nose bottom-right).
+ * Scale is relative to VEHICLE_SPRITE_SCALE (1.0 = default size, <1 = smaller, >1 = larger).
+ * Add new variants by appending to this array; VehicleSystem picks one at spawn via even distribution.
+ */
+export const VEHICLE_VARIANTS: [string, string, number][] = [
+  ['car1u', 'car1d', 1.0],
+  ['car2u', 'car2d', 0.85],
+  ['car3u', 'car3d', 1.0],
+  ['car4u', 'car4d', 1.0],
+  ['car5u', 'car5d', 1.0],
+];
+
+/** Total number of vehicle sprite variants available. */
+export const VEHICLE_VARIANT_COUNT = VEHICLE_VARIANTS.length;
+
+/** Legacy convenience aliases (variant 0) used by the sprite pool default texture. */
+export const VEHICLE_TEXTURE_UP = VEHICLE_VARIANTS[0][0];
+export const VEHICLE_TEXTURE_DOWN = VEHICLE_VARIANTS[0][1];
+
+/** Draw params for one vehicle sprite: position, texture, flip, and scale multiplier. */
+export interface VehicleDrawParams {
+  x: number;
+  y: number;
+  textureKey: string;
+  flipX: boolean;
+  /** Variant-specific scale multiplier (applied on top of VEHICLE_SPRITE_SCALE). */
+  scaleMultiplier: number;
+}
+
+/**
  * EntityRenderer - Handles rendering of vehicles and pedestrians
  */
 export class EntityRenderer {
   /**
-   * Draw all vehicles
+   * Get draw params for a single vehicle (position, texture, flip) for use with sprites.
+   * Isometric screen direction: movement "up" on screen = decreasing screen Y; "down" = increasing Y.
+   * Art convention: car1u = drawn for upward travel (nose top-left), car1d = for downward (nose bottom-right).
+   * Flip depends on texture: car1u faces left (flip for North/up-right); car1d faces right (flip for South/down-left).
+   * North (screenDx>0, screenDy<0): car1u, face right -> flipX true. West (screenDx<0, screenDy<0): car1u, face left -> flipX false.
+   * South (screenDx<0, screenDy>0): car1d, face left -> flipX true. East (screenDx>0, screenDy>0): car1d, face right -> flipX false.
+   */
+  static getVehicleDrawParams(
+    vehicle: VehicleEntity,
+    gridOffsetX: number,
+    gridOffsetY: number
+  ): VehicleDrawParams {
+    const x = vehicle.screenX + gridOffsetX;
+    const y = vehicle.screenY + gridOffsetY;
+
+    let screenDx = 0;
+    let screenDy = 0;
+
+    const path = vehicle.path;
+    const idx = vehicle.currentPathIndex;
+    if (path.length >= 2 && idx < path.length) {
+      const prev = idx === 0
+        ? { x: vehicle.x, y: vehicle.y }
+        : path[idx - 1];
+      const next = path[idx];
+      const prevScreen = isoToScreen(prev.x, prev.y);
+      const nextScreen = isoToScreen(next.x, next.y);
+      screenDx = nextScreen.x - prevScreen.x;
+      screenDy = nextScreen.y - prevScreen.y;
+    } else if (path.length >= 2) {
+      // At end of path (e.g. parked): use last segment
+      const prev = path[path.length - 2];
+      const next = path[path.length - 1];
+      const prevScreen = isoToScreen(prev.x, prev.y);
+      const nextScreen = isoToScreen(next.x, next.y);
+      screenDx = nextScreen.x - prevScreen.x;
+      screenDy = nextScreen.y - prevScreen.y;
+    }
+
+    const movingUp = screenDy < 0;
+    const variant = VEHICLE_VARIANTS[vehicle.spriteVariant ?? 0] ?? VEHICLE_VARIANTS[0];
+    const textureKey = movingUp ? variant[0] : variant[1];
+    const flipX = movingUp ? screenDx > 0 : screenDx < 0;
+    const scaleMultiplier = variant[2];
+
+    return { x, y, textureKey, flipX, scaleMultiplier };
+  }
+
+  /**
+   * Draw all vehicles (legacy graphics path; used only when sprite pool is not available).
    */
   static drawVehicles(
     vehicles: VehicleEntity[],
@@ -18,24 +98,21 @@ export class EntityRenderer {
     gridOffsetY: number
   ): void {
     graphics.clear();
-    
+
     vehicles.forEach(vehicle => {
-      // Draw red diamond smaller than a cell, matching isometric orientation
-      const halfWidth = (TILE_WIDTH / 2) * 0.7; // Match isometric width ratio
-      const halfHeight = (TILE_HEIGHT / 2) * 0.7; // Match isometric height ratio
-      
-      // Vehicle position in screen coordinates
-      const screenX = vehicle.screenX + gridOffsetX;
-      const screenY = vehicle.screenY + gridOffsetY;
-      
-      // Draw diamond shape matching isometric tile orientation
-      // Points: top, right, bottom, left (same as isometric cells)
-      graphics.fillStyle(0xff0000, 1); // Red
+      const { x: screenX, y: screenY } = EntityRenderer.getVehicleDrawParams(
+        vehicle,
+        gridOffsetX,
+        gridOffsetY
+      );
+      const halfWidth = (TILE_WIDTH / 2) * 0.7;
+      const halfHeight = (TILE_HEIGHT / 2) * 0.7;
+      graphics.fillStyle(0xff0000, 1);
       graphics.beginPath();
-      graphics.moveTo(screenX, screenY - halfHeight); // Top
-      graphics.lineTo(screenX + halfWidth, screenY); // Right
-      graphics.lineTo(screenX, screenY + halfHeight); // Bottom
-      graphics.lineTo(screenX - halfWidth, screenY); // Left
+      graphics.moveTo(screenX, screenY - halfHeight);
+      graphics.lineTo(screenX + halfWidth, screenY);
+      graphics.lineTo(screenX, screenY + halfHeight);
+      graphics.lineTo(screenX - halfWidth, screenY);
       graphics.closePath();
       graphics.fillPath();
     });

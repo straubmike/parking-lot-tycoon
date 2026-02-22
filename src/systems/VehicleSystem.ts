@@ -2,6 +2,7 @@ import { SpawnerDespawnerPair, CellData, Ploppable } from '@/types';
 import { VehicleEntity } from '@/entities/Vehicle';
 import { isoToScreen } from '@/utils/isometric';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
+import { VEHICLE_VARIANT_COUNT } from '@/renderers/EntityRenderer';
 import { PedestrianSystem } from './PedestrianSystem';
 import { PathfindingSystem, EdgeBlockedCallback, MoveCostCallback } from './PathfindingSystem';
 import { GameSystems } from '@/core/GameSystems';
@@ -292,6 +293,8 @@ export class VehicleSystem {
 
     // Random speed with variance
     const speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
+
+    const spriteVariant = Math.floor(Math.random() * VEHICLE_VARIANT_COUNT);
     
     const vehicle = new VehicleEntity(
       pair.spawnerX,
@@ -300,7 +303,8 @@ export class VehicleSystem {
       pair.despawnerY,
       path,
       speed,
-      isPotentialParker
+      isPotentialParker,
+      spriteVariant
     );
     
     // Set reserved spot if found
@@ -615,11 +619,13 @@ export class VehicleSystem {
 
     const moveDistance = (vehicle.speed * delta) / 1000;
 
-    // Keep logical grid position from path: we're in the cell we're coming from until we reach the next waypoint
-    const logicalX = vehicle.currentPathIndex === 0 ? vehicle.spawnerX : vehicle.path[vehicle.currentPathIndex - 1].x;
-    const logicalY = vehicle.currentPathIndex === 0 ? vehicle.spawnerY : vehicle.path[vehicle.currentPathIndex - 1].y;
-    vehicle.x = logicalX;
-    vehicle.y = logicalY;
+    // Keep logical grid position from path: we're in the cell we're coming from until we reach the next waypoint.
+    // When currentPathIndex === 0, vehicle.x/y already holds the correct origin
+    // (spawner for newly spawned vehicles, parking spot for leaving vehicles).
+    if (vehicle.currentPathIndex > 0) {
+      vehicle.x = vehicle.path[vehicle.currentPathIndex - 1].x;
+      vehicle.y = vehicle.path[vehicle.currentPathIndex - 1].y;
+    }
 
     if (distance <= moveDistance || distance < 0.1) {
       // Reached target: now we're in the target cell

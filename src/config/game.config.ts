@@ -10,6 +10,9 @@ export const GAME_CONFIG: GameConfig = {
 export const TILE_WIDTH = 64;
 export const TILE_HEIGHT = 32;
 
+/** Vehicle sprite scale: display width = TILE_WIDTH * this (so cars fit within a tile). */
+export const VEHICLE_SPRITE_SCALE = 0.65;
+
 /** When true, log a warning to console when a vehicle path contains lane-line crossings (for debugging pathing). */
 export const DEBUG_PATH_LANE_CHECK = false;
 
