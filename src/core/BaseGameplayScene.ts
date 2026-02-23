@@ -4,7 +4,7 @@ import { GridManager } from './GridManager';
 import { GridRenderer } from '@/systems/GridRenderer';
 import { PloppableManager } from '@/systems/PloppableManager';
 import { SpawnerManager } from '@/managers/SpawnerManager';
-import { EntityRenderer, VEHICLE_TEXTURE_UP, VEHICLE_VARIANTS } from '@/renderers/EntityRenderer';
+import { EntityRenderer, VEHICLE_TEXTURE_UP, VEHICLE_VARIANTS, PLOPPABLE_SPRITES } from '@/renderers/EntityRenderer';
 import { PathfindingUtilities } from '@/utils/PathfindingUtilities';
 import { VehicleSystem } from '@/systems/VehicleSystem';
 import { PedestrianSystem } from '@/systems/PedestrianSystem';
@@ -56,7 +56,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   // Labels for cleanup
   protected permanentLabels: Phaser.GameObjects.Text[] = [];
   protected vehicleSpawnerLabels: Phaser.GameObjects.Text[] = [];
-  protected ploppableLabels: Phaser.GameObjects.Text[] = [];
+  protected ploppableLabels: Phaser.GameObjects.GameObject[] = [];
 
   /** When false, vehicle/pedestrian spawner emojis and permanent "P" labels are not drawn (challenge mode). */
   protected showDevOnlyCellLabels: boolean = true;
@@ -71,6 +71,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     for (const [upKey, downKey] of VEHICLE_VARIANTS) {
       this.load.image(upKey, `/assets/vehicles/${upKey}.png`);
       this.load.image(downKey, `/assets/vehicles/${downKey}.png`);
+    }
+    for (const textureKey of Object.values(PLOPPABLE_SPRITES)) {
+      this.load.image(textureKey, `/assets/sprites/${textureKey}.png`);
     }
   }
 
@@ -667,6 +670,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       sprite.setPosition(params.x, params.y);
       sprite.setTexture(params.textureKey);
       sprite.setFlipX(params.flipX);
+      sprite.setDepth(1.8 + params.y * 0.0001);
       const targetWidth = TILE_WIDTH * VEHICLE_SPRITE_SCALE * params.scaleMultiplier;
       if (sprite.width > 0) {
         sprite.setScale(targetWidth / sprite.width);

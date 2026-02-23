@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { GridManager } from '@/core/GridManager';
 import { Ploppable, CellData } from '@/types';
+import { PLOPPABLE_SPRITES, PLOPPABLE_SPRITE_CONFIG } from '@/renderers/EntityRenderer';
 import { PassabilitySystem } from './PassabilitySystem';
 import { AppealSystem } from './AppealSystem';
 import { SafetySystem } from './SafetySystem';
@@ -388,7 +389,7 @@ export class PloppableManager {
     graphics: Phaser.GameObjects.Graphics,
     gridOffsetX: number,
     gridOffsetY: number
-  ): Phaser.GameObjects.Text | null {
+  ): Phaser.GameObjects.GameObject | null {
     if (!cellData?.ploppable) return null;
     
     const ploppable = cellData.ploppable;
@@ -450,6 +451,19 @@ export class PloppableManager {
       const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
       
+      const spriteKey = PLOPPABLE_SPRITES[ploppable.type];
+      if (spriteKey) {
+        const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
+        const sprite = scene.add.sprite(centerX, centerY, spriteKey);
+        sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 0.5);
+        sprite.setDepth(3);
+        sprite.setFlipX(ploppable.spriteFlip ?? false);
+        const baseScale = TILE_WIDTH * 0.7;
+        const scaleMult = config?.scaleMultiplier ?? 1;
+        if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+        return sprite;
+      }
+
       const label = scene.add.text(centerX, centerY, emoji, {
         fontSize: '24px',
       });
@@ -464,12 +478,30 @@ export class PloppableManager {
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
       
       const position = this.getTypeAPosition(centerX, centerY, orientation);
+
+      const spriteKey = PLOPPABLE_SPRITES[ploppable.type];
+      if (spriteKey) {
+        let flipX = false;
+        if (ploppable.type === 'Bench') {
+          flipX = orientation === 1 || orientation === 3; // east/west
+        } else if (ploppable.type === 'Street Light') {
+          flipX = orientation === 0 || orientation === 2; // north/south
+        }
+        const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
+        const sprite = scene.add.sprite(position.x, position.y, spriteKey);
+        sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
+        sprite.setDepth(3);
+        sprite.setFlipX(flipX);
+        const baseScale = TILE_WIDTH * 0.5;
+        const scaleMult = config?.scaleMultiplier ?? 1;
+        if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+        return sprite;
+      }
       
-      // Create emoji label - origin at mid-bottom for Type A (trash can)
       const label = scene.add.text(position.x, position.y, emoji, {
         fontSize: '18px',
       });
-      label.setOrigin(0.5, 1.0); // Mid-bottom origin
+      label.setOrigin(0.5, 1.0);
       label.setDepth(3);
       return label;
     } else {

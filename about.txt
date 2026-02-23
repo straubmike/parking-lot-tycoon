@@ -1,7 +1,7 @@
 Hello, my name is Mike.
 I created Parking Lot Tycoon for fun and as an experiment. This game was coded entirely using AI agents through Cursor.
 
-The graphics were obtained from freepik.com by the author marcovector under a free license.
+The graphics were obtained from freepik.com by the author marcovector under a free license @ <a href="http://www.freepik.com">Designed by macrovector / Freepik</a>.
 
 I've always liked game design, but the entry barriers for making videos games has always been very steep. It remarkable how AI tools have alleviated this. For that reason, I host my game for free.
 

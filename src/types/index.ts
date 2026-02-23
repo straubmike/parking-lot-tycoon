@@ -100,6 +100,7 @@ export interface Ploppable {
   passable?: boolean; // Whether pedestrians and vehicles can pass through
   subType?: 'BOOTH' | 'COLLECTION'; // For Parking Booth: BOOTH = drawn tile (impassable), COLLECTION = collection tile (passable)
   parkingSpotOrientation?: number; // For Parking Meter: stores the original parking spot orientation (missing edge) for drawing spot lines
+  spriteFlip?: boolean; // Cosmetic horizontal flip for sprite rendering (randomized at placement for Tree, Shrub, Flower Patch)
 }
 
 export interface NPC {

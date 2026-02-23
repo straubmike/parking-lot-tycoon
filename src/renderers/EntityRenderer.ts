@@ -5,25 +5,67 @@ import { PedestrianEntity } from '@/entities/Pedestrian';
 import { isoToScreen } from '@/utils/isometric';
 
 /**
- * Vehicle sprite variants. Each entry is [upTextureKey, downTextureKey, scale].
+ * Vehicle sprite variant: [upTextureKey, downTextureKey, scale].
  * "Up" = screen-Y decreasing (nose top-left); "down" = screen-Y increasing (nose bottom-right).
  * Scale is relative to VEHICLE_SPRITE_SCALE (1.0 = default size, <1 = smaller, >1 = larger).
- * Add new variants by appending to this array; VehicleSystem picks one at spawn via even distribution.
  */
-export const VEHICLE_VARIANTS: [string, string, number][] = [
+export type VehicleVariant = [string, string, number];
+
+/** Sprites used for vehicles that intend to park. */
+export const PARKER_VARIANTS: VehicleVariant[] = [
   ['car1u', 'car1d', 1.0],
-  ['car2u', 'car2d', 0.85],
+  ['car2u', 'car2d', 1.0],
   ['car3u', 'car3d', 1.0],
-  ['car4u', 'car4d', 1.0],
-  ['car5u', 'car5d', 1.0],
 ];
 
-/** Total number of vehicle sprite variants available. */
-export const VEHICLE_VARIANT_COUNT = VEHICLE_VARIANTS.length;
+/** Sprites used for vehicles that are just passing through (includes cars + larger vehicles). */
+export const NON_PARKER_VARIANTS: VehicleVariant[] = [
+  ['car1u', 'car1d', 1.0],
+  ['car2u', 'car2d', 1.0],
+  ['car3u', 'car3d', 1.0],
+  ['bus1u', 'bus1d', 2.0],
+  ['truck1u', 'truck1d', 1.25],
+];
 
-/** Legacy convenience aliases (variant 0) used by the sprite pool default texture. */
+/** All unique variants (union of both pools) — used for preloading and sprite lookup by index. */
+export const VEHICLE_VARIANTS: VehicleVariant[] = (() => {
+  const seen = new Set<string>();
+  const all: VehicleVariant[] = [];
+  for (const v of [...PARKER_VARIANTS, ...NON_PARKER_VARIANTS]) {
+    if (!seen.has(v[0])) { seen.add(v[0]); all.push(v); }
+  }
+  return all;
+})();
+
+/** Legacy convenience alias (variant 0) used by the sprite pool default texture. */
 export const VEHICLE_TEXTURE_UP = VEHICLE_VARIANTS[0][0];
-export const VEHICLE_TEXTURE_DOWN = VEHICLE_VARIANTS[0][1];
+
+/** Ploppable type name -> sprite texture key (for types that have PNG sprites). */
+export const PLOPPABLE_SPRITES: Record<string, string> = {
+  'Trash Can': 'trashcan',
+  'Bench': 'bench',
+  'Street Light': 'lamp',
+  'Tree': 'tree',
+  'Shrub': 'shrub',
+  'Flower Patch': 'flowers',
+};
+
+/** Per-sprite origin (0–1) and scale multiplier for ploppable sprites. */
+export interface PloppableSpriteConfig {
+  originX: number;
+  originY: number;
+  /** Scale multiplier applied to base tile-relative scale (1 = default). */
+  scaleMultiplier: number;
+}
+
+export const PLOPPABLE_SPRITE_CONFIG: Record<string, PloppableSpriteConfig> = {
+  'Trash Can': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.25 },
+  'Tree': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.0 },
+  'Shrub': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.75 },
+  'Flower Patch': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.5 },
+  'Street Light': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.5 },
+  'Bench': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.75 },
+};
 
 /** Draw params for one vehicle sprite: position, texture, flip, and scale multiplier. */
 export interface VehicleDrawParams {

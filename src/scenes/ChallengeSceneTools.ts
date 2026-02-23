@@ -547,6 +547,9 @@ export class GridEditorController {
         passable: passable ?? false,
       };
       if (this.selectedPloppableType === 'Parking Booth') ploppable.subType = 'BOOTH';
+      if (this.selectedPloppableType === 'Tree' || this.selectedPloppableType === 'Shrub' || this.selectedPloppableType === 'Flower Patch') {
+        ploppable.spriteFlip = Math.random() < 0.5;
+      }
       PloppableManager.placePloppable(gridX, gridY, ploppable, gridManager, gridWidth, gridHeight);
       if (this.selectedPloppableType === 'Crosswalk') {
         const cellData = gridManager.getCellData(gridX, gridY);

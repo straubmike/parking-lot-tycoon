@@ -2,7 +2,7 @@ import { SpawnerDespawnerPair, CellData, Ploppable } from '@/types';
 import { VehicleEntity } from '@/entities/Vehicle';
 import { isoToScreen } from '@/utils/isometric';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
-import { VEHICLE_VARIANT_COUNT } from '@/renderers/EntityRenderer';
+import { PARKER_VARIANTS, NON_PARKER_VARIANTS, VEHICLE_VARIANTS, VehicleVariant } from '@/renderers/EntityRenderer';
 import { PedestrianSystem } from './PedestrianSystem';
 import { PathfindingSystem, EdgeBlockedCallback, MoveCostCallback } from './PathfindingSystem';
 import { GameSystems } from '@/core/GameSystems';
@@ -294,7 +294,9 @@ export class VehicleSystem {
     // Random speed with variance
     const speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
 
-    const spriteVariant = Math.floor(Math.random() * VEHICLE_VARIANT_COUNT);
+    const pool: VehicleVariant[] = isPotentialParker ? PARKER_VARIANTS : NON_PARKER_VARIANTS;
+    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    const spriteVariant = VEHICLE_VARIANTS.indexOf(chosen);
     
     const vehicle = new VehicleEntity(
       pair.spawnerX,
