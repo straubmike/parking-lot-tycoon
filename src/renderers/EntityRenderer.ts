@@ -48,6 +48,8 @@ export const PLOPPABLE_SPRITES: Record<string, string> = {
   'Tree': 'tree',
   'Shrub': 'shrub',
   'Flower Patch': 'flowers',
+  'Vending Machine': 'vending',
+  'Dumpster': 'dumpster',
 };
 
 /** Per-sprite origin (0–1) and scale multiplier for ploppable sprites. */
@@ -59,12 +61,14 @@ export interface PloppableSpriteConfig {
 }
 
 export const PLOPPABLE_SPRITE_CONFIG: Record<string, PloppableSpriteConfig> = {
-  'Trash Can': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.25 },
+  'Trash Can': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.3 },
   'Tree': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.0 },
   'Shrub': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.75 },
   'Flower Patch': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.5 },
   'Street Light': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.5 },
   'Bench': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.75 },
+  'Vending Machine': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.75 },
+  'Dumpster': { originX: 0.5, originY: 1.0, scaleMultiplier: 2.0 },
 };
 
 /** Draw params for one vehicle sprite: position, texture, flip, and scale multiplier. */

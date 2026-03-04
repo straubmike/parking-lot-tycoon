@@ -4,11 +4,13 @@
  */
 
 import Phaser from 'phaser';
+import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { getIsometricTilePoints } from '@/utils/isometric';
 import { Ploppable, COLOR_TO_SURFACE } from '@/types';
 import { GridManager } from '@/core/GridManager';
 import { GridInteractionHandler } from '@/systems/GridInteractionHandler';
 import { PloppableManager } from '@/systems/PloppableManager';
+import { PLOPPABLE_SPRITES, PLOPPABLE_SPRITE_CONFIG } from '@/renderers/EntityRenderer';
 import { SpawnerManager } from '@/managers/SpawnerManager';
 import { SafetySystem } from '@/systems/SafetySystem';
 import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
@@ -33,7 +35,7 @@ export interface GridEditorContext {
   getCamera(): Phaser.Cameras.Scene2D.Camera;
   getInput(): Phaser.Input.InputPlugin;
   getTime(): Phaser.Time.Clock;
-  getAdd(): { graphics(): Phaser.GameObjects.Graphics };
+  getAdd(): { graphics(): Phaser.GameObjects.Graphics; sprite(x: number, y: number, texture: string): Phaser.GameObjects.Sprite };
   resizeGrid(newWidth: number, newHeight: number): void;
 }
 
@@ -66,6 +68,7 @@ export class GridEditorController {
   private showAppealVisualization = false;
   private showSafetyVisualization = false;
   private visualizationGraphics: Phaser.GameObjects.Graphics | null = null;
+  private ghostSprite: Phaser.GameObjects.Sprite | null = null;
 
   constructor(context: GridEditorContext) {
     this.ctx = context;
@@ -230,8 +233,27 @@ export class GridEditorController {
 
   private clearHighlight(): void {
     this.ctx.getHighlightGraphics().clear();
+    this.destroyGhostSprite();
     this.hoveredCell = null;
     this.hoveredEdge = null;
+  }
+
+  private destroyGhostSprite(): void {
+    if (this.ghostSprite) {
+      this.ghostSprite.destroy();
+      this.ghostSprite = null;
+    }
+  }
+
+  private createGhostSprite(x: number, y: number, textureKey: string, originX: number, originY: number, flipX: boolean, baseScale: number, scaleMult: number): void {
+    this.destroyGhostSprite();
+    const sprite = this.ctx.getAdd().sprite(x, y, textureKey);
+    sprite.setOrigin(originX, originY);
+    sprite.setDepth(10);
+    sprite.setFlipX(flipX);
+    sprite.setAlpha(0.5);
+    if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+    this.ghostSprite = sprite;
   }
 
   private updateHoverHighlight(pointer: Phaser.Input.Pointer): void {
@@ -263,8 +285,14 @@ export class GridEditorController {
     const ox = this.ctx.getGridOffsetX();
     const oy = this.ctx.getGridOffsetY();
     g.clear();
+    this.destroyGhostSprite();
     const points = getIsometricTilePoints(gridX, gridY);
     const offsetPoints = points.map(p => ({ x: p.x + ox, y: p.y + oy }));
+
+    // Try to draw a ghost sprite preview for ploppables that have sprite art
+    if (!this.isDemolishMode && this.selectedPloppableType && this.tryDrawGhostPreview(gridX, gridY, ox, oy, gridWidth, gridHeight)) {
+      return;
+    }
 
     if (this.isDemolishMode) {
       g.lineStyle(2, 0xff0000, 0.8);
@@ -280,23 +308,6 @@ export class GridEditorController {
         const endIdx = (edgeIdx + 1) % 4;
         g.lineBetween(offsetPoints[edgeIdx].x, offsetPoints[edgeIdx].y, offsetPoints[endIdx].x, offsetPoints[endIdx].y);
       });
-    } else if (this.selectedPloppableType === 'Tree' || this.selectedPloppableType === 'Shrub' || this.selectedPloppableType === 'Flower Patch') {
-      g.lineStyle(1.5, 0x00ff00, 0.6);
-      g.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
-      g.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
-      g.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
-      g.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
-    } else if (this.selectedPloppableType === 'Street Light') {
-      const centerX = (offsetPoints[0].x + offsetPoints[2].x) / 2;
-      const centerY = (offsetPoints[0].y + offsetPoints[2].y) / 2;
-      g.lineStyle(1.5, 0x00ff00, 0.6);
-      g.lineBetween(offsetPoints[0].x, offsetPoints[0].y, offsetPoints[1].x, offsetPoints[1].y);
-      g.lineBetween(offsetPoints[1].x, offsetPoints[1].y, offsetPoints[2].x, offsetPoints[2].y);
-      g.lineBetween(offsetPoints[2].x, offsetPoints[2].y, offsetPoints[3].x, offsetPoints[3].y);
-      g.lineBetween(offsetPoints[3].x, offsetPoints[3].y, offsetPoints[0].x, offsetPoints[0].y);
-      const indicatorPos = PloppableManager.getTypeAPosition(centerX, centerY, this.ploppableOrientation);
-      g.fillStyle(0x00ff00, 0.8);
-      g.fillCircle(indicatorPos.x, indicatorPos.y, 4);
     } else if (this.selectedPloppableType === 'Security Camera') {
       const cellData = gridManager.getCellData(gridX, gridY);
       const hasStreetLight = cellData?.ploppable?.type === 'Street Light';
@@ -398,6 +409,103 @@ export class GridEditorController {
     } else {
       GridInteractionHandler.drawBasicHighlight(gridX, gridY, g, ox, oy);
     }
+  }
+
+  /**
+   * Try to draw a ghost (transparent) sprite preview for the selected ploppable.
+   * Returns true if a ghost preview was drawn (caller should skip old highlight logic).
+   * Mirrors the position/flip/scale logic from PloppableManager.drawPloppable.
+   */
+  private tryDrawGhostPreview(gridX: number, gridY: number, ox: number, oy: number, gridWidth: number, gridHeight: number): boolean {
+    const type = this.selectedPloppableType;
+    if (!type) return false;
+    const spriteKey = PLOPPABLE_SPRITES[type];
+    if (!spriteKey) return false;
+    const config = PLOPPABLE_SPRITE_CONFIG[type];
+    const orientation = this.ploppableOrientation;
+
+    // Non-oriented ploppables: Tree, Shrub, Flower Patch
+    if (type === 'Tree' || type === 'Shrub' || type === 'Flower Patch') {
+      const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
+      const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + oy;
+      const SHRUB_ORIGIN_OFFSET_Y = -5;
+      const posY = type === 'Shrub' ? centerY + SHRUB_ORIGIN_OFFSET_Y : centerY;
+      this.createGhostSprite(centerX, posY, spriteKey,
+        config?.originX ?? 0.5, config?.originY ?? 0.5, false,
+        TILE_WIDTH * 0.7, config?.scaleMultiplier ?? 1);
+      return true;
+    }
+
+    // Type A oriented: Trash Can, Bench, Street Light
+    if (type === 'Trash Can' || type === 'Bench' || type === 'Street Light') {
+      const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
+      const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + oy;
+      const position = PloppableManager.getTypeAPosition(centerX, centerY, orientation);
+
+      const TRASHCAN_ORIGIN_OFFSET_Y_TOP = 5;
+      const TRASHCAN_ORIGIN_OFFSET_Y_BOTTOM = 2;
+      const TRASHCAN_ORIGIN_OFFSET_X = -5;
+      const BENCH_ORIGIN_OFFSET_Y_TOP = 0;
+      const BENCH_ORIGIN_OFFSET_Y_BOTTOM = -5;
+      const BENCH_ORIGIN_OFFSET_X = -5;
+      const isBottom = orientation === 2 || orientation === 3;
+
+      let posX = position.x;
+      let posY = position.y;
+      let flipX = false;
+
+      if (type === 'Trash Can') {
+        posY = position.y + (isBottom ? TRASHCAN_ORIGIN_OFFSET_Y_BOTTOM : TRASHCAN_ORIGIN_OFFSET_Y_TOP);
+        posX = position.x + (orientation === 1 || orientation === 2 ? TRASHCAN_ORIGIN_OFFSET_X : -TRASHCAN_ORIGIN_OFFSET_X);
+      } else if (type === 'Bench') {
+        posY = position.y + (isBottom ? BENCH_ORIGIN_OFFSET_Y_BOTTOM : BENCH_ORIGIN_OFFSET_Y_TOP);
+        posX = position.x + (orientation === 1 || orientation === 2 ? BENCH_ORIGIN_OFFSET_X : -BENCH_ORIGIN_OFFSET_X);
+        flipX = orientation === 1 || orientation === 3;
+      } else if (type === 'Street Light') {
+        flipX = orientation === 0 || orientation === 2;
+      }
+
+      this.createGhostSprite(posX, posY, spriteKey,
+        config?.originX ?? 0.5, config?.originY ?? 1.0, flipX,
+        TILE_WIDTH * 0.5, config?.scaleMultiplier ?? 1);
+      return true;
+    }
+
+    // Type B single-tile: Vending Machine (only south/west have art)
+    if (type === 'Vending Machine') {
+      if (orientation !== 2 && orientation !== 3) return false;
+      const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
+      const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + oy;
+      const VENDING_ORIGIN_OFFSET_X = 10;
+      const VENDING_ORIGIN_OFFSET_Y = 5;
+      const flipX = orientation === 3;
+      const offsetX = orientation === 2 ? -VENDING_ORIGIN_OFFSET_X : VENDING_ORIGIN_OFFSET_X;
+      this.createGhostSprite(centerX + offsetX, centerY + VENDING_ORIGIN_OFFSET_Y, spriteKey,
+        config?.originX ?? 0.5, config?.originY ?? 1.0, flipX,
+        TILE_WIDTH * 0.5, config?.scaleMultiplier ?? 1);
+      return true;
+    }
+
+    // Type B 2-tile: Dumpster (only south/west have art)
+    if (type === 'Dumpster') {
+      if (orientation !== 2 && orientation !== 3) return false;
+      const secondCell = PloppableManager.getSecondCellForTwoTile(gridX, gridY, orientation, gridWidth, gridHeight);
+      if (!secondCell) return false;
+      const center1X = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
+      const center1Y = (gridX + gridY) * (TILE_HEIGHT / 2) + oy;
+      const center2X = (secondCell.x - secondCell.y) * (TILE_WIDTH / 2) + ox;
+      const center2Y = (secondCell.x + secondCell.y) * (TILE_HEIGHT / 2) + oy;
+      const centerX = (center1X + center2X) / 2;
+      const centerY = (center1Y + center2Y) / 2;
+      const DUMPSTER_ORIGIN_OFFSET_Y = 15;
+      const flipX = orientation === 2;
+      this.createGhostSprite(centerX, centerY + DUMPSTER_ORIGIN_OFFSET_Y, spriteKey,
+        config?.originX ?? 0.5, config?.originY ?? 1.0, flipX,
+        TILE_WIDTH * 0.5, config?.scaleMultiplier ?? 1);
+      return true;
+    }
+
+    return false;
   }
 
   private paintCell(gridX: number, gridY: number): void {
@@ -762,7 +870,8 @@ export class GridEditorController {
           this.isDemolishMode = false;
           document.getElementById('demolish-button')?.classList.remove('selected');
           this.selectedPloppableType = ploppableName;
-          this.ploppableOrientation = 0;
+          // Vending Machine & Dumpster: only south (2) and west (3) supported (no north/east sprite); default to south
+          this.ploppableOrientation = (ploppableName === 'Vending Machine' || ploppableName === 'Dumpster') ? 2 : 0;
           if (this.isPermanentMode) {
             this.isPermanentMode = false;
             const permanentButton = document.getElementById('permanent-button');
@@ -871,7 +980,11 @@ export class GridEditorController {
         const rotationMap = [1, 3, 0, 2];
         this.ploppableOrientation = rotationMap[this.ploppableOrientation];
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Vending Machine', 'Dumpster', 'Portable Toilet', 'Street Light', 'Bench', 'Speed Bump', 'Crosswalk'].includes(this.selectedPloppableType || '')) {
+      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
+        // Vending Machine & Dumpster: only south (2) and west (3) — no north/east sprite
+        this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
+        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+      } else if (['Trash Can', 'Portable Toilet', 'Street Light', 'Bench', 'Speed Bump', 'Crosswalk'].includes(this.selectedPloppableType || '')) {
         this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
       }
@@ -881,7 +994,11 @@ export class GridEditorController {
         const rotationMap = [2, 0, 3, 1];
         this.ploppableOrientation = rotationMap[this.ploppableOrientation];
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Vending Machine', 'Dumpster', 'Portable Toilet', 'Street Light', 'Bench', 'Speed Bump', 'Crosswalk', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
+      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster') {
+        // Vending Machine & Dumpster: only south (2) and west (3) — no north/east sprite
+        this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
+        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+      } else if (['Trash Can', 'Portable Toilet', 'Street Light', 'Bench', 'Speed Bump', 'Crosswalk', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
       }

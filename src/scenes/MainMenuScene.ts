@@ -257,34 +257,18 @@ export class MainMenuScene extends Phaser.Scene {
     const wrap = document.createElement('div');
     wrap.className = 'about-panel';
 
-    const linkPattern = /<a\s+href="([^"]*)"[^>]*>(.*?)<\/a>/gi;
     const paragraphs = aboutText.split('\n\n');
     for (const para of paragraphs) {
       const trimmed = para.trim();
       if (!trimmed) continue;
       const p = document.createElement('p');
       p.className = 'about-paragraph';
-
-      let lastIndex = 0;
-      let match: RegExpExecArray | null;
-      linkPattern.lastIndex = 0;
-      while ((match = linkPattern.exec(trimmed)) !== null) {
-        if (match.index > lastIndex) {
-          p.appendChild(document.createTextNode(trimmed.slice(lastIndex, match.index)));
-        }
-        const a = document.createElement('a');
-        a.href = match[1];
-        a.textContent = match[2];
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        a.className = 'about-link';
-        p.appendChild(a);
-        lastIndex = linkPattern.lastIndex;
-      }
-      if (lastIndex < trimmed.length) {
-        p.appendChild(document.createTextNode(trimmed.slice(lastIndex)));
-      }
-
+      p.innerHTML = trimmed.replace(/\n/g, '<br>');
+      p.querySelectorAll('a').forEach((a) => {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+        a.classList.add('about-link');
+      });
       wrap.appendChild(p);
     }
 

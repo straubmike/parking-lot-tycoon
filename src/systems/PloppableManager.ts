@@ -450,11 +450,13 @@ export class PloppableManager {
     if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Security Camera' || ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk') {
       const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+      const SHRUB_ORIGIN_OFFSET_Y = -5; // draw shrub a little lower
+      const posY = ploppable.type === 'Shrub' ? centerY + SHRUB_ORIGIN_OFFSET_Y : centerY;
       
       const spriteKey = PLOPPABLE_SPRITES[ploppable.type];
       if (spriteKey) {
         const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
-        const sprite = scene.add.sprite(centerX, centerY, spriteKey);
+        const sprite = scene.add.sprite(centerX, posY, spriteKey);
         sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 0.5);
         sprite.setDepth(3);
         sprite.setFlipX(ploppable.spriteFlip ?? false);
@@ -464,7 +466,7 @@ export class PloppableManager {
         return sprite;
       }
 
-      const label = scene.add.text(centerX, centerY, emoji, {
+      const label = scene.add.text(centerX, posY, emoji, {
         fontSize: '24px',
       });
       label.setOrigin(0.5, 0.5);
@@ -478,6 +480,21 @@ export class PloppableManager {
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
       
       const position = this.getTypeAPosition(centerX, centerY, orientation);
+      // Trash can: Y offset by orientation — top (0,1) draw lower (+Y); bottom (2,3) inverse so not too low (-Y)
+      const TRASHCAN_ORIGIN_OFFSET_Y_TOP = 5;
+      const TRASHCAN_ORIGIN_OFFSET_Y_BOTTOM = 2; // inverse for bottom orientations (2, 3)
+      const TRASHCAN_ORIGIN_OFFSET_X = -5; // left (0,3) = -X, right (1,2) = +X; tweak as needed
+      const isBottom = orientation === 2 || orientation === 3;
+      const trashY = position.y + (isBottom ? TRASHCAN_ORIGIN_OFFSET_Y_BOTTOM : TRASHCAN_ORIGIN_OFFSET_Y_TOP);
+      const trashX = position.x + (orientation === 1 || orientation === 2 ? TRASHCAN_ORIGIN_OFFSET_X : -TRASHCAN_ORIGIN_OFFSET_X);
+      // Bench: same control — Y top/bottom, X left/right by orientation
+      const BENCH_ORIGIN_OFFSET_Y_TOP = 0;
+      const BENCH_ORIGIN_OFFSET_Y_BOTTOM = -5;
+      const BENCH_ORIGIN_OFFSET_X = -5;
+      const benchY = position.y + (isBottom ? BENCH_ORIGIN_OFFSET_Y_BOTTOM : BENCH_ORIGIN_OFFSET_Y_TOP);
+      const benchX = position.x + (orientation === 1 || orientation === 2 ? BENCH_ORIGIN_OFFSET_X : -BENCH_ORIGIN_OFFSET_X);
+      const posX = ploppable.type === 'Trash Can' ? trashX : ploppable.type === 'Bench' ? benchX : position.x;
+      const posY = ploppable.type === 'Trash Can' ? trashY : ploppable.type === 'Bench' ? benchY : position.y;
 
       const spriteKey = PLOPPABLE_SPRITES[ploppable.type];
       if (spriteKey) {
@@ -488,7 +505,7 @@ export class PloppableManager {
           flipX = orientation === 0 || orientation === 2; // north/south
         }
         const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
-        const sprite = scene.add.sprite(position.x, position.y, spriteKey);
+        const sprite = scene.add.sprite(posX, posY, spriteKey);
         sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
         sprite.setDepth(3);
         sprite.setFlipX(flipX);
@@ -564,6 +581,23 @@ export class PloppableManager {
         const centerX = (center1X + center2X) / 2;
         const centerY = (center1Y + center2Y) / 2;
         
+        // Dumpster: use dumpster.png for south (2) flipped, west (3) no flip; north (0) and east (1) disabled (same as Vending Machine)
+        // Vertical offset so base midpoint aligns with 2-tile cell edge (magic number, tweak as needed)
+        const DUMPSTER_ORIGIN_OFFSET_Y = 15;
+        const twoTileSpriteKey = PLOPPABLE_SPRITES[ploppable.type];
+        if (ploppable.type === 'Dumpster' && twoTileSpriteKey && (orientation === 2 || orientation === 3)) {
+          const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
+          const flipX = orientation === 2; // south = flipped; west = no flip
+          const sprite = scene.add.sprite(centerX, centerY + DUMPSTER_ORIGIN_OFFSET_Y, twoTileSpriteKey);
+          sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
+          sprite.setDepth(3);
+          sprite.setFlipX(flipX);
+          const baseScale = TILE_WIDTH * 0.5;
+          const scaleMult = config?.scaleMultiplier ?? 1;
+          if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+          return sprite;
+        }
+        
         // Create emoji label at center between the two cells
         const label = scene.add.text(centerX, centerY, emoji, {
           fontSize: '24px',
@@ -591,7 +625,26 @@ export class PloppableManager {
         const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
         const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
         
-        // Create main emoji label at center
+        // Vending Machine: use vending.png for south (2) no flip, west (3) flipped; north (0) and east (1) disabled (no art)
+        // 10px left/right offset by facing so base aligns with cell (south: left, west: right)
+        const VENDING_ORIGIN_OFFSET_X = 10;
+        const VENDING_ORIGIN_OFFSET_Y = 5; // draw 5px lower so base aligns with cell
+        const spriteKey = PLOPPABLE_SPRITES[ploppable.type];
+        if (ploppable.type === 'Vending Machine' && spriteKey && (orientation === 2 || orientation === 3)) {
+          const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
+          const flipX = orientation === 3; // west = flipped sprite; south = no flip
+          const offsetX = orientation === 2 ? -VENDING_ORIGIN_OFFSET_X : VENDING_ORIGIN_OFFSET_X;
+          const sprite = scene.add.sprite(centerX + offsetX, centerY + VENDING_ORIGIN_OFFSET_Y, spriteKey);
+          sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
+          sprite.setDepth(3);
+          sprite.setFlipX(flipX);
+          const baseScale = TILE_WIDTH * 0.5;
+          const scaleMult = config?.scaleMultiplier ?? 1;
+          if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+          return sprite;
+        }
+        
+        // Create main emoji label at center (fallback for types without sprite or disabled orientations)
         const label = scene.add.text(centerX, centerY, emoji, {
           fontSize: '24px',
         });

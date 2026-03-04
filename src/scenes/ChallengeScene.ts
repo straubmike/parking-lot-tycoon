@@ -344,7 +344,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
     return this.time;
   }
 
-  getAdd(): { graphics(): Phaser.GameObjects.Graphics } {
+  getAdd(): { graphics(): Phaser.GameObjects.Graphics; sprite(x: number, y: number, texture: string): Phaser.GameObjects.Sprite } {
     return this.add;
   }
 
