@@ -215,21 +215,29 @@ export class PathfindingUtilities {
     // Instead, a cost penalty is applied via getLaneLineCrossingCost so A* prefers paths
     // that don't cross the lane line unnecessarily but still crosses when it's the only way.
 
-    // Check parking spot borders on entry edges (only for vehicles)
-    // When isEntryEdge is true, cellX/cellY is the target cell and edge is the target edge
-    // Parking spot borders are on the parking spot cell itself, so check directly
-    if (entityType === 'vehicle' && isEntryEdge) {
+    // Check parking spot borders for vehicles (entry AND corridor edges).
+    // Corridor edges must be checked too: for N/S movement the source cell's
+    // edge is marked isCorridor=true, so restricting to isEntryEdge lets
+    // vehicles escape through drawn parking-spot edges during N/S movement.
+    // This is safe because isParkingSpotEdgeBlocked only returns true when
+    // the cell actually contains a parking spot ploppable.
+    if (entityType === 'vehicle') {
       const isParkingSpotBlocked = this.isParkingSpotEdgeBlocked(cellX, cellY, edge, gridManager);
       if (isParkingSpotBlocked) {
         return true;
       }
     }
     
-    // Check for impassable ploppables in the target cell (only on entry edges)
+    // Check for impassable ploppables and grass surface in the target cell (only on entry edges)
     // When isEntryEdge is true, cellX/cellY IS the target cell (from getEdgesToCheck)
-    // So we check the ploppable directly on this cell
     if (isEntryEdge) {
       const cellData = gridManager.getCellData(cellX, cellY);
+
+      // Grass is impassable for vehicles (not a drivable surface)
+      if (entityType === 'vehicle' && cellData?.surfaceType === 'grass') {
+        return true;
+      }
+
       if (cellData?.ploppable) {
         const blocksEntity = PassabilitySystem.doesPloppableBlockEntity(cellData.ploppable, entityType);
         if (blocksEntity) {

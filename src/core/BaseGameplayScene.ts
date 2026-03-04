@@ -200,7 +200,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       );
     };
     
-    // Create move cost callback for pathfinding (penalizes lane line crossings and prefers concrete for pedestrians)
+    // Create move cost callback for pathfinding
+    // - Vehicles: penalizes lane-line crossings and non-asphalt surfaces
+    // - Pedestrians: penalizes non-concrete tiles to encourage using sidewalks
     const getMoveCost = (
       fromX: number,
       fromY: number,
@@ -219,16 +221,35 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         this.gridManager
       );
 
-      // For pedestrians, ADD cost for non-concrete tiles to encourage using sidewalks
-      // We use a penalty approach instead of discount because negative costs break A* heuristic
-      // (Manhattan distance doesn't account for discounts, causing suboptimal paths)
-      if (entityType === 'pedestrian') {
-        const targetCell = this.gridManager.getCellData(toX, toY);
-        // Concrete surfaces or tiles that behave like sidewalks (e.g., Crosswalks) are preferred
+      const targetCell = this.gridManager.getCellData(toX, toY);
+
+      if (entityType === 'vehicle') {
+        // Vehicles strongly prefer asphalt. Other drivable surfaces carry increasing
+        // penalties so A* routes along roads when possible, while still allowing
+        // short cuts through 1-2 tiles of concrete (e.g. a sidewalk-enclosed lot
+        // entrance) when no better route exists.
+        // Grass is hard-blocked in isEdgeBlockedForEntity; no cost entry needed here.
+        const surface = targetCell?.surfaceType;
+        if (surface === 'concrete' && !targetCell?.behavesLikeSidewalk) {
+          cost += 10;
+        } else if (surface === 'dirt') {
+          cost += 4;
+        } else if (surface === 'gravel') {
+          cost += 2;
+        }
+        // Crosswalks (on asphalt) are passable and don't trigger the sidewalk
+        // drive-over rating penalty, but vehicles should cross them, not path along
+        // them. Apply a moderate penalty so crossing 1–2 tiles is fine, but driving
+        // a length of crosswalks is disfavored vs normal asphalt.
+        if (targetCell?.ploppable?.type === 'Crosswalk' || targetCell?.behavesLikeSidewalk) {
+          cost += 5;
+        }
+      } else {
+        // For pedestrians, ADD cost for non-concrete tiles to encourage using sidewalks
+        // We use a penalty approach instead of discount because negative costs break A* heuristic
+        // (Manhattan distance doesn't account for discounts, causing suboptimal paths)
         const isSidewalkLike = targetCell?.surfaceType === 'concrete' || targetCell?.behavesLikeSidewalk === true;
         if (!isSidewalkLike) {
-          // Add 0.8 penalty for non-sidewalk tiles
-          // This makes concrete/crosswalk paths significantly cheaper without using negative costs
           cost += 0.8;
         }
       }

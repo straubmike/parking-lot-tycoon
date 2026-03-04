@@ -17,9 +17,9 @@ export class PassabilitySystem {
   private static readonly DEFAULT_PASSABILITY: Record<string, boolean | 'pedestrian-only'> = {
     'Parking Spot': true, // Parking spots are passable (vehicles park in them)
     'Trash Can': 'pedestrian-only', // Trash cans are passable by pedestrians only (vehicles cannot pass)
-    'Vending Machine': false, // Vending machines are impassable (block movement)
+    'Vending Machine': 'pedestrian-only', // Vending machines are passable by pedestrians only
     'Dumpster': false, // Dumpsters are impassable (block movement)
-    'Tree': false, // Trees are impassable (block movement)
+    'Tree': 'pedestrian-only', // Trees are passable by pedestrians only
     'Shrub': false, // Shrubs are impassable (block movement)
     'Flower Patch': true, // Flower patches are passable (decorations)
     'Street Light': true, // Street lights are passable
