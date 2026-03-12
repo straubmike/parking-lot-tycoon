@@ -1,5 +1,5 @@
 import { GridManager } from '@/core/GridManager';
-import { Ploppable, CellData } from '@/types';
+import { Ploppable } from '@/types';
 import { PloppableManager } from './PloppableManager';
 
 /**
@@ -25,7 +25,7 @@ export class SafetySystem {
     isTwoTile?: boolean;
   }> = {
     'Street Light': { safetyDelta: 1, radius: 2, shape: 'circular' },
-    'Security Camera': { safetyDelta: 1, radius: 8, shape: 'circular' },
+    'Security Camera': { safetyDelta: 1, radius: 5, shape: 'circular' },
     'Speed Bump': { safetyDelta: 1, radius: 1, shape: 'circular' },
     'Crosswalk': { safetyDelta: 1, radius: 1, shape: 'circular' },
   };

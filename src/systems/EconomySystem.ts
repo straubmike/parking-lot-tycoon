@@ -3,7 +3,7 @@
  * 
  * Tracks player's money:
  * - Decrements when ploppables are placed
- * - Increments when parking fees are collected (future)
+ * - Increments when parking fees are collected (via ParkingTimerSystem)
  */
 export class EconomySystem {
   private static instance: EconomySystem;

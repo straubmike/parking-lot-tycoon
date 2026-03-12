@@ -214,6 +214,11 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
         const p = cellData?.ploppable;
         if (p && p.x === x && p.y === y) {
           ploppableCountByType[p.type] = (ploppableCountByType[p.type] ?? 0) + 1;
+          if (p.addOns) {
+            for (const addOn of p.addOns) {
+              ploppableCountByType[addOn] = (ploppableCountByType[addOn] ?? 0) + 1;
+            }
+          }
         }
       }
     }
@@ -344,7 +349,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
     return this.time;
   }
 
-  getAdd(): { graphics(): Phaser.GameObjects.Graphics; sprite(x: number, y: number, texture: string): Phaser.GameObjects.Sprite } {
+  getAdd(): { graphics(): Phaser.GameObjects.Graphics; sprite(x: number, y: number, texture: string): Phaser.GameObjects.Sprite; container(x: number, y: number): Phaser.GameObjects.Container } {
     return this.add;
   }
 
@@ -353,7 +358,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
    */
   protected render(): void {
     super.render();
-    if (this.tools && (this.tools.getShowAppealVisualization() || this.tools.getShowSafetyVisualization())) {
+    if (this.tools) {
       this.tools.renderVisualization();
     }
   }
@@ -423,13 +428,4 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
       gridSizeYInput.value = this.gridHeight.toString();
     }
   }
-
-  // update() and updateGameUI() removed - now in BaseGameplayScene
-
-  // Rebuild methods removed - now in SpawnerManager.rebuildSpawnerPairsFromGrid()
-  // getAllParkingSpots and getPedestrianDestinations removed - now in BaseGameplayScene
-
-  // Pathfinding methods removed - now in PathfindingUtilities
-
-  // Rendering methods (drawRails, drawVehicles, drawPedestrians) removed - now in BaseGameplayScene.renderEntities() and EntityRenderer
 }

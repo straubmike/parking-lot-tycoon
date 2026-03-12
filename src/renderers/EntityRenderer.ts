@@ -50,6 +50,12 @@ export const PLOPPABLE_SPRITES: Record<string, string> = {
   'Flower Patch': 'flowers',
   'Vending Machine': 'vending',
   'Dumpster': 'dumpster',
+  'Booth Barrier': 'barrier',
+  'Parking Booth': 'booth',
+  'Parking Meter': 'meter',
+  'Speed Bump': 'speedbump',
+  'Security Camera': 'camera',
+  'Pedestrian Spawner': 'cone',
 };
 
 /** Per-sprite origin (0–1) and scale multiplier for ploppable sprites. */
@@ -69,6 +75,12 @@ export const PLOPPABLE_SPRITE_CONFIG: Record<string, PloppableSpriteConfig> = {
   'Bench': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.75 },
   'Vending Machine': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.75 },
   'Dumpster': { originX: 0.5, originY: 1.0, scaleMultiplier: 2.0 },
+  'Booth Barrier': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.3 },
+  'Parking Booth': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.8 },
+  'Parking Meter': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.15 },
+  'Speed Bump': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.7 },
+  'Security Camera': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.3 },
+  'Pedestrian Spawner': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.15 },
 };
 
 /** Draw params for one vehicle sprite: position, texture, flip, and scale multiplier. */

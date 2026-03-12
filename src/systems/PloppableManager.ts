@@ -394,8 +394,7 @@ export class PloppableManager {
     
     const ploppable = cellData.ploppable;
     
-    // Skip ploppables that have their own rendering (parking spot, pedestrian spawner)
-    if (ploppable.type === 'Parking Spot' || ploppable.type === 'Pedestrian Spawner') {
+    if (ploppable.type === 'Parking Spot') {
       return null;
     }
     
@@ -405,9 +404,59 @@ export class PloppableManager {
       // Special handling for Parking Booth: render booth on primary, target on collection
       if (ploppable.type === 'Parking Booth') {
         if (ploppable.subType === 'COLLECTION') {
-          // Render target emoji on collection tile
           const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
           const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
+
+          // Place barrier on the shared edge between collection and booth cells.
+          // From getSecondCellForTwoTile, collection cell positions relative to booth:
+          //   ori 0: collection=(bx, by+1) → screen: booth is upper-right → shared edge = collection's top-right
+          //   ori 1: collection=(bx-1, by) → screen: booth is lower-right → shared edge = collection's bottom-right
+          //   ori 2: collection=(bx, by-1) → screen: booth is lower-left  → shared edge = collection's bottom-left
+          //   ori 3: collection=(bx+1, by) → screen: booth is upper-left  → shared edge = collection's top-left
+          // Left-side edges use source graphic; right-side edges use horizontal flip.
+          const ori = ploppable.orientation ?? 0;
+          let edgeOffX = 0;
+          let edgeOffY = 0;
+          let flipX = false;
+
+          switch (ori) {
+            case 0: // shared edge = top-right
+              edgeOffX = TILE_WIDTH / 4;
+              edgeOffY = -TILE_HEIGHT / 4;
+              flipX = false;
+              break;
+            case 1: // shared edge = bottom-right
+              edgeOffX = TILE_WIDTH / 4;
+              edgeOffY = TILE_HEIGHT / 4;
+              flipX = true;
+              break;
+            case 2: // shared edge = bottom-left
+              edgeOffX = -TILE_WIDTH / 4;
+              edgeOffY = TILE_HEIGHT / 4;
+              flipX = false;
+              break;
+            case 3: // shared edge = top-left
+              edgeOffX = -TILE_WIDTH / 4;
+              edgeOffY = -TILE_HEIGHT / 4;
+              flipX = true;
+              break;
+          }
+
+          const BARRIER_OFFSET_Y = 3;
+          const barrierKey = PLOPPABLE_SPRITES['Booth Barrier'];
+          if (barrierKey) {
+            const config = PLOPPABLE_SPRITE_CONFIG['Booth Barrier'];
+            const sprite = scene.add.sprite(centerX + edgeOffX, centerY + edgeOffY + BARRIER_OFFSET_Y, barrierKey);
+            sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
+            sprite.setDepth(3);
+            sprite.setFlipX(flipX);
+            const baseScale = TILE_WIDTH * 0.5;
+            const scaleMult = config?.scaleMultiplier ?? 1;
+            if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+            return sprite;
+          }
+
+          // Fallback emoji if barrier sprite is missing
           const targetLabel = scene.add.text(centerX, centerY, '🎯', {
             fontSize: '24px',
           });
@@ -438,16 +487,16 @@ export class PloppableManager {
     else if (ploppable.type === 'Shrub') emoji = '🌿';
     else if (ploppable.type === 'Flower Patch') emoji = '🌸';
     else if (ploppable.type === 'Street Light') emoji = '💡';
-    else if (ploppable.type === 'Security Camera') emoji = '📹';
     else if (ploppable.type === 'Portable Toilet') emoji = '🚽';
     else if (ploppable.type === 'Bench') emoji = '🪑';
     else if (ploppable.type === 'Speed Bump') emoji = '⛰️';
     else if (ploppable.type === 'Crosswalk') emoji = '🚸';
+    else if (ploppable.type === 'Pedestrian Spawner') emoji = '🚶';
     else if (ploppable.type === 'Parking Meter') emoji = '⏰';
     else if (ploppable.type === 'Parking Booth') emoji = '🏪';
     
-    // Handle non-oriented ploppables (Tree, Shrub, Flower Patch, Security Camera, Speed Bump, Crosswalk) - render at center, no arrow
-    if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Security Camera' || ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk') {
+    // Handle non-oriented ploppables - render at center, no arrow
+    if (ploppable.type === 'Tree' || ploppable.type === 'Shrub' || ploppable.type === 'Flower Patch' || ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk' || ploppable.type === 'Pedestrian Spawner') {
       const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
       const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
       const SHRUB_ORIGIN_OFFSET_Y = -5; // draw shrub a little lower
@@ -458,8 +507,16 @@ export class PloppableManager {
         const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
         const sprite = scene.add.sprite(centerX, posY, spriteKey);
         sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 0.5);
-        sprite.setDepth(3);
-        sprite.setFlipX(ploppable.spriteFlip ?? false);
+        const depth = (ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk') ? 1.5 : 3;
+        sprite.setDepth(depth);
+        let flip = ploppable.spriteFlip ?? false;
+        if (ploppable.type === 'Speed Bump') {
+          flip = orientation === 3;
+          const SPEED_BUMP_ROTATION_DEG = 2.5;
+          const rad = (SPEED_BUMP_ROTATION_DEG * Math.PI) / 180;
+          sprite.setRotation(flip ? -rad : rad);
+        }
+        sprite.setFlipX(flip);
         const baseScale = TILE_WIDTH * 0.7;
         const scaleMult = config?.scaleMultiplier ?? 1;
         if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
@@ -493,7 +550,9 @@ export class PloppableManager {
       const BENCH_ORIGIN_OFFSET_X = -5;
       const benchY = position.y + (isBottom ? BENCH_ORIGIN_OFFSET_Y_BOTTOM : BENCH_ORIGIN_OFFSET_Y_TOP);
       const benchX = position.x + (orientation === 1 || orientation === 2 ? BENCH_ORIGIN_OFFSET_X : -BENCH_ORIGIN_OFFSET_X);
-      const posX = ploppable.type === 'Trash Can' ? trashX : ploppable.type === 'Bench' ? benchX : position.x;
+      const METER_OFFSET_X = orientation === 2 ? 3 : orientation === 3 ? -3 : 0;
+      const meterX = position.x + METER_OFFSET_X;
+      const posX = ploppable.type === 'Trash Can' ? trashX : ploppable.type === 'Bench' ? benchX : ploppable.type === 'Parking Meter' ? meterX : position.x;
       const posY = ploppable.type === 'Trash Can' ? trashY : ploppable.type === 'Bench' ? benchY : position.y;
 
       const spriteKey = PLOPPABLE_SPRITES[ploppable.type];
@@ -512,6 +571,37 @@ export class PloppableManager {
         const baseScale = TILE_WIDTH * 0.5;
         const scaleMult = config?.scaleMultiplier ?? 1;
         if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+
+        if (ploppable.type === 'Street Light' && ploppable.addOns?.includes('Security Camera')) {
+          const camKey = PLOPPABLE_SPRITES['Security Camera'];
+          if (camKey) {
+            const container = scene.add.container(posX, posY);
+            container.setDepth(3);
+            sprite.setPosition(0, 0);
+            container.add(sprite);
+
+            const camConfig = PLOPPABLE_SPRITE_CONFIG['Security Camera'];
+            const lampHeight = sprite.displayHeight;
+            const camY = -lampHeight * 0.5;
+            const camBaseScale = TILE_WIDTH * 0.5;
+            const camScaleMult = camConfig?.scaleMultiplier ?? 1;
+
+            const camLeft = scene.add.sprite(-7, camY, camKey);
+            camLeft.setOrigin(camConfig?.originX ?? 0.5, camConfig?.originY ?? 1.0);
+            if (camLeft.width > 0) camLeft.setScale((camBaseScale / camLeft.width) * camScaleMult);
+            camLeft.setFlipX(false);
+            container.add(camLeft);
+
+            const camRight = scene.add.sprite(7, camY, camKey);
+            camRight.setOrigin(camConfig?.originX ?? 0.5, camConfig?.originY ?? 1.0);
+            if (camRight.width > 0) camRight.setScale((camBaseScale / camRight.width) * camScaleMult);
+            camRight.setFlipX(true);
+            container.add(camRight);
+
+            return container;
+          }
+        }
+
         return sprite;
       }
       
@@ -526,22 +616,33 @@ export class PloppableManager {
       if (size === 2) {
         // Special handling for Parking Booth: draw booth emoji on primary tile only (no arrow, no center-between)
         if (ploppable.type === 'Parking Booth') {
-          // Only render from primary cell (BOOTH subType)
           if (ploppable.subType !== 'BOOTH') {
-            return null; // Collection tile renders separately (handled earlier in the function)
+            return null;
           }
           
-          // Draw booth emoji on primary cell center (not between cells, no arrow)
           const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
           const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
-          
+
+          const boothSpriteKey = PLOPPABLE_SPRITES['Parking Booth'];
+          if (boothSpriteKey && (orientation === 0 || orientation === 1 || orientation === 2 || orientation === 3)) {
+            const config = PLOPPABLE_SPRITE_CONFIG['Parking Booth'];
+            const flipX = orientation === 0 || orientation === 1;
+            const BOOTH_OFFSET_Y = -3;
+            const sprite = scene.add.sprite(centerX, centerY + TILE_HEIGHT / 2 + BOOTH_OFFSET_Y, boothSpriteKey);
+            sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
+            sprite.setDepth(3);
+            sprite.setFlipX(flipX);
+            const baseScale = TILE_WIDTH * 0.5;
+            const scaleMult = config?.scaleMultiplier ?? 1;
+            if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+            return sprite;
+          }
+
           const boothLabel = scene.add.text(centerX, centerY, emoji, {
             fontSize: '24px',
           });
           boothLabel.setOrigin(0.5, 0.5);
           boothLabel.setDepth(3);
-          
-          // No arrow for Parking Booth
           return boothLabel;
         }
         

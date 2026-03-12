@@ -83,15 +83,23 @@ export class LeaderboardScene extends Phaser.Scene {
       table.style.cssText = 'width:100%;border-collapse:collapse;font-size:14px;';
       table.innerHTML = '<thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">Player</th><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">Challenge</th><th style="text-align:right;padding:8px;border-bottom:1px solid #555;">Score</th><th style="text-align:right;padding:8px;border-bottom:1px solid #555;">Profit</th></tr></thead><tbody></tbody>';
       const tbody = table.querySelector('tbody')!;
+      const cellStyle = 'padding:8px;border-bottom:1px solid #333;';
+      const rightCellStyle = cellStyle + 'text-align:right;';
       entries.forEach((e, i) => {
         const row = document.createElement('tr');
-        row.innerHTML = `
-          <td style="padding:8px;border-bottom:1px solid #333;">${i + 1}</td>
-          <td style="padding:8px;border-bottom:1px solid #333;">${e.playerName}</td>
-          <td style="padding:8px;border-bottom:1px solid #333;">${getChallengeDisplayName(e.challengeId)}</td>
-          <td style="padding:8px;border-bottom:1px solid #333;text-align:right;">${e.score}</td>
-          <td style="padding:8px;border-bottom:1px solid #333;text-align:right;">$${e.metrics.profit.toLocaleString()}</td>
-        `;
+        const cells = [
+          { text: String(i + 1), style: cellStyle },
+          { text: e.playerName, style: cellStyle },
+          { text: getChallengeDisplayName(e.challengeId), style: cellStyle },
+          { text: String(e.score), style: rightCellStyle },
+          { text: `$${e.metrics.profit.toLocaleString()}`, style: rightCellStyle },
+        ];
+        for (const { text, style } of cells) {
+          const td = document.createElement('td');
+          td.style.cssText = style;
+          td.textContent = text;
+          row.appendChild(td);
+        }
         tbody.appendChild(row);
       });
       listDiv.appendChild(table);

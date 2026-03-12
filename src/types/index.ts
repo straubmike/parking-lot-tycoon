@@ -73,7 +73,7 @@ export interface Challenge {
 }
 
 export interface WinCondition {
-  type: 'profit' | 'rating' | 'time' | 'custom' | 'min_rating' | 'min_parking_spots' | 'required_ploppables';
+  type: 'profit' | 'rating' | 'time' | 'min_rating' | 'min_parking_spots' | 'required_ploppables';
   value: number;
   description: string;
   /** For required_ploppables: ploppable type name (e.g. "Trash Can") */
@@ -101,6 +101,7 @@ export interface Ploppable {
   subType?: 'BOOTH' | 'COLLECTION'; // For Parking Booth: BOOTH = drawn tile (impassable), COLLECTION = collection tile (passable)
   parkingSpotOrientation?: number; // For Parking Meter: stores the original parking spot orientation (missing edge) for drawing spot lines
   spriteFlip?: boolean; // Cosmetic horizontal flip for sprite rendering (randomized at placement for Tree, Shrub, Flower Patch)
+  addOns?: string[]; // Add-on ploppables attached to this one (e.g. 'Security Camera' on a Street Light)
 }
 
 export interface NPC {

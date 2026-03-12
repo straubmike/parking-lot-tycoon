@@ -52,7 +52,6 @@ export class ChallengeSystem {
         if (wc.ploppableType == null || wc.ploppableCount == null) return true;
         const count = metrics.ploppableCountByType?.[wc.ploppableType] ?? 0;
         return count >= wc.ploppableCount;
-      case 'custom':
       default:
         return false;
     }

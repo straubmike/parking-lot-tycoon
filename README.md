@@ -86,7 +86,6 @@ src/
 │   └── challenges.config.ts  # Challenge definitions
 ├── core/                # Core game classes
 │   ├── Game.ts          # Phaser game initialization
-│   ├── GameState.ts     # Global state management
 │   └── GameSystems.ts   # Centralized singleton access to all game systems
 ├── scenes/              # Phaser scenes
 │   ├── DevModeScene.ts  # Development/testing sandbox scene
@@ -118,10 +117,8 @@ src/
 
 public/
 └── assets/              # Game assets
-    ├── fonts/           # Font files
-    ├── sounds/          # Audio files
-    ├── sprites/         # Sprite images
-    └── tiles/           # Tile textures
+    ├── sprites/         # Sprite images (ploppables)
+    └── vehicles/        # Vehicle sprite images
 ```
 
 ## Game Systems Architecture
@@ -145,7 +142,7 @@ The game uses a centralized singleton architecture for core systems:
 ### EconomySystem
 - Manages player budget/money
 - Tracks spending on ploppables
-- Handles earnings from parking fees (future)
+- Handles earnings from parking fees (via ParkingTimerSystem)
 
 ### GameSystems Facade
 - Central access point: `GameSystems.time`, `GameSystems.rating`, `GameSystems.economy`
@@ -168,6 +165,8 @@ The `DevModeScene` is a sandbox for testing and development:
 - Paint tiles and draw lines (curbs, fences, lane lines)
 - Test vehicle and pedestrian systems
 - Export/import grid layouts
+
+Challenge map JSONs for each level live in `public/` (see **MAP_LAYOUTS.md** for adding new maps).
 
 ### Adding New Systems
 

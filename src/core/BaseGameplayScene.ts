@@ -237,11 +237,10 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
         } else if (surface === 'gravel') {
           cost += 2;
         }
-        // Crosswalks (on asphalt) are passable and don't trigger the sidewalk
-        // drive-over rating penalty, but vehicles should cross them, not path along
-        // them. Apply a moderate penalty so crossing 1–2 tiles is fine, but driving
-        // a length of crosswalks is disfavored vs normal asphalt.
-        if (targetCell?.ploppable?.type === 'Crosswalk' || targetCell?.behavesLikeSidewalk) {
+        // Concrete sidewalks (behavesLikeSidewalk but NOT crosswalks) get a moderate
+        // penalty so vehicles prefer asphalt but can still cut through 1-2 tiles.
+        // Crosswalks are exempt -- they inherit the underlying surface cost (asphalt = 0).
+        if (targetCell?.behavesLikeSidewalk && targetCell?.ploppable?.type !== 'Crosswalk') {
           cost += 5;
         }
       } else {
@@ -511,8 +510,6 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     this.clearLabels();
     this.renderGrid();
     this.renderLines();
-    // Rail visualization removed - pathing logic remains intact
-    // this.renderRails();
     this.renderPermanentLabels();
     this.renderSpawners();
     this.renderPloppables();
@@ -551,19 +548,6 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     GridRenderer.drawLines(
       this.gridManager,
       this.linesGraphics,
-      this.gridWidth,
-      this.gridHeight,
-      this.gridOffsetX,
-      this.gridOffsetY
-    );
-  }
-
-  /**
-   * Render rails
-   */
-  protected renderRails(): void {
-    GridRenderer.drawRails(
-      this.railGraphics,
       this.gridWidth,
       this.gridHeight,
       this.gridOffsetX,
