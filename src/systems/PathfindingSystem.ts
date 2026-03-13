@@ -200,6 +200,72 @@ export class PathfindingSystem {
   }
 
   /**
+   * Get the path cost from start to goal (same cost metric as A*: move cost + penalties).
+   * Returns Infinity if no path exists. Used to compare detours for need fulfillment.
+   */
+  getPathCost(
+    startX: number,
+    startY: number,
+    goalX: number,
+    goalY: number,
+    entityType: PathfindingEntityType
+  ): number {
+    if (!this.isInBounds(startX, startY) || !this.isInBounds(goalX, goalY)) {
+      return Infinity;
+    }
+    if (startX === goalX && startY === goalY) {
+      return 0;
+    }
+    const openSet: PathNode[] = [];
+    const closedSet = new Set<string>();
+    const startNode: PathNode = {
+      x: startX,
+      y: startY,
+      g: 0,
+      h: this.heuristic(startX, startY, goalX, goalY),
+      f: 0,
+      parent: null,
+    };
+    startNode.f = startNode.g + startNode.h;
+    openSet.push(startNode);
+
+    while (openSet.length > 0) {
+      openSet.sort((a, b) => a.f - b.f);
+      const current = openSet.shift()!;
+      if (current.x === goalX && current.y === goalY) {
+        return current.g;
+      }
+      const currentKey = `${current.x},${current.y}`;
+      closedSet.add(currentKey);
+
+      for (const dir of CARDINAL_DIRECTIONS) {
+        const neighborX = current.x + dir.dx;
+        const neighborY = current.y + dir.dy;
+        const neighborKey = `${neighborX},${neighborY}`;
+        if (!this.isInBounds(neighborX, neighborY) || closedSet.has(neighborKey)) continue;
+        if (!this.canMove(current.x, current.y, dir.name, entityType)) continue;
+
+        const moveCostPenalty = this.getMoveCost(current.x, current.y, neighborX, neighborY, dir.name, entityType);
+        const g = current.g + 1 + moveCostPenalty;
+        const h = this.heuristic(neighborX, neighborY, goalX, goalY);
+        const f = g + h;
+
+        const existingIndex = openSet.findIndex(n => n.x === neighborX && n.y === neighborY);
+        if (existingIndex !== -1) {
+          if (g < openSet[existingIndex].g) {
+            openSet[existingIndex].g = g;
+            openSet[existingIndex].f = f;
+            openSet[existingIndex].parent = current;
+          }
+        } else {
+          openSet.push({ x: neighborX, y: neighborY, g, h, f, parent: current });
+        }
+      }
+    }
+    return Infinity;
+  }
+
+  /**
    * Check if movement from a cell in a direction is allowed
    * 
    * @param fromX - Starting cell X

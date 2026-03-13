@@ -147,7 +147,7 @@ export class PloppableManager {
    * Get the size of a ploppable (number of tiles it occupies)
    */
   static getPloppableSize(ploppableType: string): number {
-    if (ploppableType === 'Dumpster' || ploppableType === 'Parking Booth') {
+    if (ploppableType === 'Parking Booth') {
       return 2;
     }
     return 1; // Default to single tile
@@ -467,11 +467,6 @@ export class PloppableManager {
           // BOOTH subType - render booth emoji (handled in Type B section below)
           // Continue to Type B rendering
         }
-      } else {
-        // For other 2-tile ploppables (Dumpster), only render from primary cell
-        if (gridX !== ploppable.x || gridY !== ploppable.y) {
-          return null; // Skip rendering second cell (rendered from primary)
-        }
       }
     }
     
@@ -646,81 +641,6 @@ export class PloppableManager {
           return boothLabel;
         }
         
-        // For other 2-tile ploppables (Dumpster), calculate center between the two cells
-        // Get the second cell coordinates
-        const primaryCell = { x: ploppable.x, y: ploppable.y };
-        // Calculate second cell based on orientation
-        // Orientation 0: (x, y+1), Orientation 1: (x-1, y), Orientation 2: (x, y-1), Orientation 3: (x+1, y)
-        let secondX: number, secondY: number;
-        switch (orientation) {
-          case 0:
-            secondX = primaryCell.x;
-            secondY = primaryCell.y + 1;
-            break;
-          case 1:
-            secondX = primaryCell.x - 1;
-            secondY = primaryCell.y;
-            break;
-          case 2:
-            secondX = primaryCell.x;
-            secondY = primaryCell.y - 1;
-            break;
-          case 3:
-            secondX = primaryCell.x + 1;
-            secondY = primaryCell.y;
-            break;
-          default:
-            secondX = primaryCell.x;
-            secondY = primaryCell.y;
-        }
-        
-        // Calculate center between the two cells
-        const center1X = (primaryCell.x - primaryCell.y) * (TILE_WIDTH / 2) + gridOffsetX;
-        const center1Y = (primaryCell.x + primaryCell.y) * (TILE_HEIGHT / 2) + gridOffsetY;
-        const center2X = (secondX - secondY) * (TILE_WIDTH / 2) + gridOffsetX;
-        const center2Y = (secondX + secondY) * (TILE_HEIGHT / 2) + gridOffsetY;
-        const centerX = (center1X + center2X) / 2;
-        const centerY = (center1Y + center2Y) / 2;
-        
-        // Dumpster: use dumpster.png for south (2) flipped, west (3) no flip; north (0) and east (1) disabled (same as Vending Machine)
-        // Vertical offset so base midpoint aligns with 2-tile cell edge (magic number, tweak as needed)
-        const DUMPSTER_ORIGIN_OFFSET_Y = 15;
-        const twoTileSpriteKey = PLOPPABLE_SPRITES[ploppable.type];
-        if (ploppable.type === 'Dumpster' && twoTileSpriteKey && (orientation === 2 || orientation === 3)) {
-          const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
-          const flipX = orientation === 2; // south = flipped; west = no flip
-          const sprite = scene.add.sprite(centerX, centerY + DUMPSTER_ORIGIN_OFFSET_Y, twoTileSpriteKey);
-          sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-          sprite.setDepth(3);
-          sprite.setFlipX(flipX);
-          const baseScale = TILE_WIDTH * 0.5;
-          const scaleMult = config?.scaleMultiplier ?? 1;
-          if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
-          return sprite;
-        }
-        
-        // Create emoji label at center between the two cells
-        const label = scene.add.text(centerX, centerY, emoji, {
-          fontSize: '24px',
-        });
-        label.setOrigin(0.5, 0.5);
-        label.setDepth(3);
-        
-        // Draw orientation arrow pointing in the facing direction (from center)
-        // Skip arrow for Speed Bump and Crosswalk
-        if (ploppable.type !== 'Speed Bump' && ploppable.type !== 'Crosswalk') {
-          this.drawOrientationArrow(
-            graphics,
-            centerX,
-            centerY,
-            orientation,
-            20, // arrow length
-            0x00ff00, // green color
-            1.0 // full opacity
-          );
-        }
-        
-        return label;
       } else {
         // Single-tile Type B: Central position with rotation indicator
         const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
@@ -736,6 +656,24 @@ export class PloppableManager {
           const flipX = orientation === 3; // west = flipped sprite; south = no flip
           const offsetX = orientation === 2 ? -VENDING_ORIGIN_OFFSET_X : VENDING_ORIGIN_OFFSET_X;
           const sprite = scene.add.sprite(centerX + offsetX, centerY + VENDING_ORIGIN_OFFSET_Y, spriteKey);
+          sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
+          sprite.setDepth(3);
+          sprite.setFlipX(flipX);
+          const baseScale = TILE_WIDTH * 0.5;
+          const scaleMult = config?.scaleMultiplier ?? 1;
+          if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+          return sprite;
+        }
+
+        // Dumpster: single cell, center; south (2) and west (3) have art. Offset 5px L/R by facing.
+        const dumpsterKey = PLOPPABLE_SPRITES['Dumpster'];
+        if (ploppable.type === 'Dumpster' && dumpsterKey && (orientation === 2 || orientation === 3)) {
+          const config = PLOPPABLE_SPRITE_CONFIG['Dumpster'];
+          const flipX = orientation === 2;
+          const DUMPSTER_OFFSET_Y = 5; // lower on screen (positive Y)
+          const DUMPSTER_OFFSET_X = 10; // facing bottom-left (ori 2) scoot left; facing bottom-right (ori 3) scoot right
+          const offsetX = orientation === 2 ? -DUMPSTER_OFFSET_X : DUMPSTER_OFFSET_X;
+          const sprite = scene.add.sprite(centerX + offsetX, centerY + DUMPSTER_OFFSET_Y, dumpsterKey);
           sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
           sprite.setDepth(3);
           sprite.setFlipX(flipX);
@@ -769,6 +707,7 @@ export class PloppableManager {
         return label;
       }
     }
+    return null;
   }
 }
 

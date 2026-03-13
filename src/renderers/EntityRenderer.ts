@@ -74,7 +74,7 @@ export const PLOPPABLE_SPRITE_CONFIG: Record<string, PloppableSpriteConfig> = {
   'Street Light': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.5 },
   'Bench': { originX: 0.5, originY: 0.5, scaleMultiplier: 0.75 },
   'Vending Machine': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.75 },
-  'Dumpster': { originX: 0.5, originY: 1.0, scaleMultiplier: 2.0 },
+  'Dumpster': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.2 },
   'Booth Barrier': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.3 },
   'Parking Booth': { originX: 0.5, originY: 1.0, scaleMultiplier: 1.8 },
   'Parking Meter': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.15 },

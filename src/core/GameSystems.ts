@@ -73,8 +73,8 @@ export class GameSystems {
    * @param gridWidth - Grid width (optional)
    * @param gridHeight - Grid height (optional)
    */
-  static resetForChallenge(initialBudget: number, gridManager?: GridManager, gridWidth?: number, gridHeight?: number): void {
-    this.time.reset();
+  static resetForChallenge(initialBudget: number, gridManager?: GridManager, gridWidth?: number, gridHeight?: number, startTimeMinutes?: number): void {
+    this.time.reset(startTimeMinutes ?? 0);
     this.rating.reset();
     this.economy.reset(initialBudget);
     this.parkingTimer.reset();

@@ -22,6 +22,24 @@ export function getSpawnIntervalMsForSchedule(
   return fallbackMs;
 }
 
+/**
+ * Resolve current potential-parker chance from time-of-day schedule.
+ * Returns fallback when outside all windows.
+ */
+export function getPotentialParkerChanceForSchedule(
+  totalGameMinutes: number,
+  schedule: Challenge['potentialParkerSchedule'],
+  fallbackChance: number = 0.5
+): number {
+  if (!schedule?.length) return fallbackChance;
+  for (const window of schedule) {
+    if (totalGameMinutes >= window.startGameMinutes && totalGameMinutes <= window.endGameMinutes) {
+      return window.chance;
+    }
+  }
+  return fallbackChance;
+}
+
 export const CHALLENGES: Challenge[] = [
   {
     id: 'dev-mode',
@@ -29,6 +47,7 @@ export const CHALLENGES: Challenge[] = [
     description: 'Full sandbox with all tools for testing and building.',
     lotSize: { width: 10, height: 10 },
     budget: 10000,
+    startTimeMinutes: 420,
     winConditions: [],
     vehicleSpawnIntervalMs: 3000,
     pedestrianRespawnMinMs: 5000,
@@ -42,6 +61,7 @@ export const CHALLENGES: Challenge[] = [
     maxDay: 3,
     lotSize: { width: 10, height: 12 },
     budget: 5000,
+    startTimeMinutes: 420,
     initialGridPath: '/learninglot.json',
     winConditions: [
       { type: 'min_rating', value: 50, description: 'Reach a lot rating of 50' },
@@ -63,23 +83,47 @@ export const CHALLENGES: Challenge[] = [
     id: 'pizza-parking-problem',
     name: 'Pizza Parking Problem',
     description: 'Hungry customers need quick free parking. Keep the lot clean or face the wrath of angry diners.',
-    descriptionSubline: 'Playable grid: 10×10',
+    descriptionSubline: 'Playable grid: 5×13',
     maxDay: 5,
-    lotSize: { width: 12, height: 12 },
+    lotSize: { width: 5, height: 15 },
+    startTimeMinutes: 420,
+    initialGridPath: '/pizzaproblem.json',
     budget: 8000,
     winConditions: [
       { type: 'min_rating', value: 60, description: 'Reach a lot rating of 60' },
       { type: 'required_ploppables', value: 1, description: 'Place at least 1 Dumpster', ploppableType: 'Dumpster', ploppableCount: 1 },
     ],
-    vehicleSpawnIntervalMs: 3500,
+    vehicleSpawnIntervalMs: 32000, // base pass-through (quarter of original for ~24-spot lots)
     vehicleSpawnSchedule: [
-      { startGameMinutes: 660, endGameMinutes: 840, spawnIntervalMs: 2000 },   // 11:00–14:00 lunch
-      { startGameMinutes: 1020, endGameMinutes: 1260, spawnIntervalMs: 2200 }, // 17:00–21:00 dinner
+      { startGameMinutes: 0,    endGameMinutes: 359,  spawnIntervalMs: 48000 }, // 12:00–5:59 AM  sparse night traffic
+      { startGameMinutes: 360,  endGameMinutes: 599,  spawnIntervalMs: 20000 },  // 6:00–9:59 AM   morning commuters pass by
+      { startGameMinutes: 600,  endGameMinutes: 659,  spawnIntervalMs: 16000 },  // 10:00–10:59 AM shop opens, light lunch seekers
+      { startGameMinutes: 660,  endGameMinutes: 719,  spawnIntervalMs: 10000 },  // 11:00–11:59 AM sharp lunch ramp
+      { startGameMinutes: 720,  endGameMinutes: 839,  spawnIntervalMs: 6000 },  // 12:00–1:59 PM  lunch peak
+      { startGameMinutes: 840,  endGameMinutes: 899,  spawnIntervalMs: 12000 },  // 2:00–2:59 PM   sharp falloff
+      { startGameMinutes: 900,  endGameMinutes: 959,  spawnIntervalMs: 20000 },  // 3:00–3:59 PM   lull between rushes
+      { startGameMinutes: 960,  endGameMinutes: 1139, spawnIntervalMs: 6000 },  // 4:00–6:59 PM   dinner peak
+      { startGameMinutes: 1140, endGameMinutes: 1199, spawnIntervalMs: 10000 },  // 7:00–7:59 PM   gradual falloff
+      { startGameMinutes: 1200, endGameMinutes: 1259, spawnIntervalMs: 16000 },  // 8:00–8:59 PM   trailing off
+      { startGameMinutes: 1260, endGameMinutes: 1319, spawnIntervalMs: 24000 }, // 9:00–9:59 PM   last stragglers
+      { startGameMinutes: 1320, endGameMinutes: 1439, spawnIntervalMs: 32000 },  // 10:00–11:59 PM closing traffic
     ],
-    pedestrianRespawnMinMs: 4000,
-    pedestrianRespawnMaxMs: 12000,
-    needGenerationProbability: 0.8,
-    needTypeDistribution: { trash: 0.75, thirst: 0, toilet: 0.25 },
+    potentialParkerChance: 0, // fallback: pass-through only (shop closed hours)
+    potentialParkerSchedule: [
+      { startGameMinutes: 600,  endGameMinutes: 659,  chance: 0.4 },  // 10:00–10:59 AM
+      { startGameMinutes: 660,  endGameMinutes: 719,  chance: 0.6 },  // 11:00–11:59 AM
+      { startGameMinutes: 720,  endGameMinutes: 839,  chance: 0.8 },  // 12:00–1:59 PM  lunch peak
+      { startGameMinutes: 840,  endGameMinutes: 899,  chance: 0.5 },  // 2:00–2:59 PM
+      { startGameMinutes: 900,  endGameMinutes: 959,  chance: 0.3 },  // 3:00–3:59 PM
+      { startGameMinutes: 960,  endGameMinutes: 1139, chance: 0.8 },  // 4:00–6:59 PM   dinner peak
+      { startGameMinutes: 1140, endGameMinutes: 1199, chance: 0.6 },  // 7:00–7:59 PM
+      { startGameMinutes: 1200, endGameMinutes: 1259, chance: 0.4 },  // 8:00–8:59 PM
+      { startGameMinutes: 1260, endGameMinutes: 1319, chance: 0.2 },  // 9:00–9:59 PM
+    ],
+    pedestrianRespawnMinMs: 5000,   // 5 game min (quick pickup)
+    pedestrianRespawnMaxMs: 45000, // 45 game min (dine-in)
+    needGenerationProbability: 0.55,
+    needTypeDistribution: { trash: 0.9, thirst: 0, toilet: 0.1 },
     meterHighParkingRateThreshold: 1,
     boothHighParkingRateThreshold: 1,
     meterHighParkingRatePenaltyPerDollar: 10,
@@ -96,6 +140,7 @@ export const CHALLENGES: Challenge[] = [
     descriptionSubline: 'Playable grid: 12×12',
     maxDay: 5,
     lotSize: { width: 14, height: 14 },
+    startTimeMinutes: 420,
     budget: 12000,
     winConditions: [
       { type: 'min_rating', value: 70, description: 'Reach a lot rating of 70' },
@@ -121,6 +166,7 @@ export const CHALLENGES: Challenge[] = [
     descriptionSubline: 'Playable grid: 14×10',
     maxDay: 5,
     lotSize: { width: 16, height: 12 },
+    startTimeMinutes: 420,
     budget: 15000,
     winConditions: [
       { type: 'min_rating', value: 75, description: 'Reach a lot rating of 75' },
@@ -151,6 +197,7 @@ export const CHALLENGES: Challenge[] = [
     descriptionSubline: 'Playable grid: 16×12',
     maxDay: 7,
     lotSize: { width: 18, height: 14 },
+    startTimeMinutes: 420,
     budget: 25000,
     winConditions: [
       { type: 'min_rating', value: 80, description: 'Reach a lot rating of 80' },

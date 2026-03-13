@@ -21,7 +21,8 @@ export class VehicleSystem {
   private readonly minSpeed: number = 30; // Minimum pixels per second
   private readonly maxSpeed: number = 60; // Maximum pixels per second
   private readonly speedBumpMaxSpeed: number = 30; // Maximum speed on speed bump (pixels per second)
-  private readonly potentialParkerChance: number = 0.5; // 50% chance to be a potential parker
+  private potentialParkerChance: number = 0.5;
+  private getPotentialParkerChanceCallback?: () => number;
   private readonly minParkingDuration: number = 5000; // Minimum parking time (5 seconds)
   private readonly maxParkingDuration: number = 15000; // Maximum parking time (15 seconds)
   private getCellData: (x: number, y: number) => CellData | undefined;
@@ -83,6 +84,26 @@ export class VehicleSystem {
    */
   setGetSpawnIntervalMs(fn: () => number): void {
     this.getSpawnIntervalMsCallback = fn;
+  }
+
+  /**
+   * Set base potential parker chance (0-1). Used when no schedule callback is set.
+   */
+  setPotentialParkerChance(chance: number): void {
+    this.potentialParkerChance = Math.max(0, Math.min(1, chance));
+  }
+
+  /**
+   * Set callback that returns current potential parker chance (0-1) from time-of-day schedule. Takes precedence over setPotentialParkerChance.
+   */
+  setGetPotentialParkerChance(fn: () => number): void {
+    this.getPotentialParkerChanceCallback = fn;
+  }
+
+  private getCurrentPotentialParkerChance(): number {
+    return this.getPotentialParkerChanceCallback
+      ? Math.max(0, Math.min(1, this.getPotentialParkerChanceCallback()))
+      : this.potentialParkerChance;
   }
 
   private getCurrentSpawnIntervalMs(): number {
@@ -171,10 +192,16 @@ export class VehicleSystem {
     if (candidates.length === 0) return { spot: null, refusalSpotType: null };
 
     // Filter by rate refusal threshold
+    // Non-meter spots only check booth rate when a booth actually exists on the lot;
+    // otherwise they're free parking and always acceptable.
     const rateAcceptable = candidates.filter(({ isMeter }) => {
-      const rate = isMeter ? parkingTimer.getMeterParkingRate() : parkingTimer.getBoothParkingRate();
-      const threshold = isMeter ? config.meterRefusalThreshold : config.boothRefusalThreshold;
-      return rate < threshold;
+      if (isMeter) {
+        return parkingTimer.getMeterParkingRate() < config.meterRefusalThreshold;
+      }
+      if (boothExists) {
+        return parkingTimer.getBoothParkingRate() < config.boothRefusalThreshold;
+      }
+      return true;
     });
 
     // Filter out meter spots when booth exists (meter+booth = refuse)
@@ -229,8 +256,7 @@ export class VehicleSystem {
    * Spawn a vehicle at a spawner
    */
   private spawnVehicle(pair: SpawnerDespawnerPair): void {
-    // Randomly determine if this vehicle is a potential parker
-    const isPotentialParker = Math.random() < this.potentialParkerChance;
+    const isPotentialParker = Math.random() < this.getCurrentPotentialParkerChance();
     
     let targetX = pair.despawnerX;
     let targetY = pair.despawnerY;
@@ -367,11 +393,13 @@ export class VehicleSystem {
       const currentTime = this.spawnTimers.get(key) || 0;
       const newTime = currentTime - delta;
       
+      const currentInterval = this.getCurrentSpawnIntervalMs();
       if (newTime <= 0) {
-        // Spawn a vehicle
         this.spawnVehicle(pair);
-        // Reset timer with some variance
-        this.spawnTimers.set(key, this.getCurrentSpawnIntervalMs() + Math.random() * 1000);
+        this.spawnTimers.set(key, currentInterval + Math.random() * 1000);
+      } else if (newTime > currentInterval + 1000) {
+        // Schedule window changed to a shorter interval -- re-sync timer
+        this.spawnTimers.set(key, currentInterval + Math.random() * 1000);
       } else {
         this.spawnTimers.set(key, newTime);
       }

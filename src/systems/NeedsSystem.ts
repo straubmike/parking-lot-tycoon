@@ -55,39 +55,19 @@ export class NeedsSystem {
    * For Type A / pedestrian-passable ploppables (trash can, vending machine):
    *   returns the cell containing the ploppable itself
    * For Type B impassable (dumpster, portable toilet):
-   *   returns the cell adjacent to the face of the ploppable
-   *
-   * For 2-tile Type B (dumpster) ploppables:
-   * - The arrow indicates the intended front face direction
-   * - Pedestrians path to the face one cell counter-clockwise from the arrow direction
-   * - Orientation mapping: 0=north, 1=east, 2=south, 3=west
-   * - Target is calculated by rotating orientation by -1 (counter-clockwise by 1, which is +3 mod 4)
+   *   returns the cell adjacent to the face of the ploppable (arrow = front face; target one cell counter-clockwise)
    */
   static getNeedTargetPosition(
     ploppable: Ploppable
   ): { x: number; y: number } {
-    // Pedestrian-passable ploppables: path directly to the ploppable cell
-    if (ploppable.orientationType === 'A' || ploppable.type === 'Vending Machine') {
+    // Pedestrian-passable ploppables (and Dumpster: peds path onto same cell for trash)
+    if (ploppable.orientationType === 'A' || ploppable.type === 'Vending Machine' || ploppable.type === 'Dumpster') {
       return { x: ploppable.x, y: ploppable.y };
     }
 
-    // Type B impassable: path to an adjacent cell
+    // Type B impassable: path to an adjacent cell (portable toilet)
     const orientation = ploppable.orientation || 0;
-    const ploppableSize = PloppableManager.getPloppableSize(ploppable.type);
     const adjustedOrientation = (orientation + 3) % 4;
-
-    // For 2-tile dumpsters, the front face is the long face indicated by the arrow
-    if (ploppableSize === 2 && ploppable.type === 'Dumpster') {
-      switch (adjustedOrientation) {
-        case 0: return { x: ploppable.x, y: ploppable.y - 1 };
-        case 1: return { x: ploppable.x + 1, y: ploppable.y };
-        case 2: return { x: ploppable.x, y: ploppable.y + 1 };
-        case 3: return { x: ploppable.x - 1, y: ploppable.y };
-        default: return { x: ploppable.x, y: ploppable.y };
-      }
-    }
-
-    // Single-tile Type B (portable toilet)
     switch (adjustedOrientation) {
       case 0: return { x: ploppable.x, y: ploppable.y - 1 };
       case 1: return { x: ploppable.x + 1, y: ploppable.y };

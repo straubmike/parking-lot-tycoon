@@ -43,29 +43,14 @@ export class SpawnerManager {
    * Draw pedestrian spawner and return the label for management
    */
   static drawPedestrianSpawner(
-    gridX: number,
-    gridY: number,
-    cellData: any,
-    scene: Phaser.Scene,
-    gridOffsetX: number,
-    gridOffsetY: number
+    _gridX: number,
+    _gridY: number,
+    _cellData: any,
+    _scene: Phaser.Scene,
+    _gridOffsetX: number,
+    _gridOffsetY: number
   ): Phaser.GameObjects.Text | null {
-    if (cellData?.ploppable?.type !== 'Pedestrian Spawner') return null;
-    
-    // Convert grid coords to screen coords (isometric)
-    const screenX = (gridX - gridY) * (TILE_WIDTH / 2) + gridOffsetX;
-    const screenY = (gridX + gridY) * (TILE_HEIGHT / 2) + gridOffsetY;
-    
-    // Create emoji label
-    const label = scene.add.text(screenX, screenY, '🚶', {
-      fontSize: '24px',
-    });
-    
-    // Center the text
-    label.setOrigin(0.5, 0.5);
-    label.setDepth(3); // Draw on top of grid
-    
-    return label;
+    return null;
   }
 
   /**
@@ -120,7 +105,6 @@ export class SpawnerManager {
   static addPedestrianSpawner(
     x: number,
     y: number,
-    gridManager: GridManager,
     pedestrianSystem: PedestrianSystem
   ): void {
     // Note: Pedestrian spawners are stored as ploppables, so this just registers with the system

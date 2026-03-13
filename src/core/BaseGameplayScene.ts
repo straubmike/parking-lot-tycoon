@@ -169,9 +169,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       this.vehicleSpritePool.push(sprite);
     }
 
-    // Create graphics object for pedestrians - drawn on top of grid but below highlights
+    // Create graphics object for pedestrians - drawn above ploppables (depth 3) so peds appear on top when occupying same cell (e.g. dumpster trash need)
     this.pedestrianGraphics = this.add.graphics();
-    this.pedestrianGraphics.setDepth(1.85);
+    this.pedestrianGraphics.setDepth(3.5);
   }
 
   /**

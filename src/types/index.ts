@@ -16,6 +16,8 @@ export interface Challenge {
   winConditionsHeading?: string;
   /** Last day (1-based) to meet win conditions; checked at 11:59pm each day. Default 5 if omitted. */
   maxDay?: number;
+  /** Game minute (0-1439) at which Day 1 starts. 0 = midnight, 420 = 7:00 AM. Default 0. */
+  startTimeMinutes?: number;
   lotSize: { width: number; height: number };
   budget: number;
   winConditions: WinCondition[];
@@ -26,6 +28,13 @@ export interface Challenge {
    * Outside all windows, vehicleSpawnIntervalMs or a high default is used.
    */
   vehicleSpawnSchedule?: Array<{ startGameMinutes: number; endGameMinutes: number; spawnIntervalMs: number }>;
+  /** Optional: base probability (0-1) that a spawned vehicle is a potential parker. Default 0.5. */
+  potentialParkerChance?: number;
+  /**
+   * Optional: time-of-day schedule for potential parker chance.
+   * Windows in game minutes (0-1439). Outside all windows, potentialParkerChance (or default 0.5) is used.
+   */
+  potentialParkerSchedule?: Array<{ startGameMinutes: number; endGameMinutes: number; chance: number }>;
   /** Optional: min pedestrian respawn duration at de/respawner in real-time ms (1 game min = 1 real sec; 8 game hrs = 480_000 ms) */
   pedestrianRespawnMinMs?: number;
   /** Optional: max pedestrian respawn duration at de/respawner in real-time ms */

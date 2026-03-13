@@ -128,12 +128,17 @@ export class PedestrianSystem {
   }
 
   /**
-   * Find a ploppable that fulfills the given need and is reachable from the start position
+   * Find a ploppable that fulfills the given need and minimizes travel along the ped's intended route.
+   * When destX/destY are provided (entry route: car → spawner), picks the option that minimizes
+   * cost(start → need spot) + cost(need spot → dest). Otherwise minimizes cost(start → need spot).
+   * Uses the same path cost as pedestrian pathfinding (concrete favor, etc.).
    */
   private findReachablePloppableForNeed(
     needType: 'trash' | 'thirst' | 'toilet',
     startX: number,
-    startY: number
+    startY: number,
+    destX?: number,
+    destY?: number
   ): Ploppable | null {
     const ploppables = NeedsSystem.getPloppablesForNeed(
       needType,
@@ -141,30 +146,29 @@ export class PedestrianSystem {
       this.gridWidth,
       this.gridHeight
     );
-    
+
     if (ploppables.length === 0) {
       return null;
     }
-    
-    // Shuffle ploppables and try to find a reachable one
-    const shuffled = [...ploppables].sort(() => Math.random() - 0.5);
-    
-    for (const ploppable of shuffled) {
+
+    let best: { ploppable: Ploppable; cost: number } | null = null;
+
+    for (const ploppable of ploppables) {
       const target = NeedsSystem.getNeedTargetPosition(ploppable);
-      const path = this.pathfindingSystem.findPath(
-        startX,
-        startY,
-        target.x,
-        target.y,
-        'pedestrian'
-      );
-      
-      if (path.length > 0 || (startX === target.x && startY === target.y)) {
-        return ploppable;
+      const toNeed = this.pathfindingSystem.getPathCost(startX, startY, target.x, target.y, 'pedestrian');
+      if (toNeed === Infinity) continue;
+
+      const totalCost = (destX !== undefined && destY !== undefined)
+        ? toNeed + this.pathfindingSystem.getPathCost(target.x, target.y, destX, destY, 'pedestrian')
+        : toNeed;
+
+      if (totalCost === Infinity) continue;
+      if (best === null || totalCost < best.cost) {
+        best = { ploppable, cost: totalCost };
       }
     }
-    
-    return null;
+
+    return best?.ploppable ?? null;
   }
 
   /**
@@ -181,7 +185,13 @@ export class PedestrianSystem {
       return false; // No need generated
     }
     
-    const ploppable = this.findReachablePloppableForNeed(needType, startX, startY);
+    const ploppable = this.findReachablePloppableForNeed(
+      needType,
+      startX,
+      startY,
+      pedestrian.destinationX,
+      pedestrian.destinationY
+    );
     if (!ploppable) {
       // Need was generated but no reachable ploppable found - track as unfulfilled
       if (!pedestrian.unfulfilledNeeds) {
@@ -725,11 +735,12 @@ export class PedestrianSystem {
   }
 
   /**
-   * Check sidewalk tile percentage for the current trip and apply penalty if < 50%
+   * Check sidewalk tile percentage for the current trip and apply penalty if route is too much asphalt.
    * Sidewalk tiles include concrete and behavesLikeSidewalk (e.g., Crosswalks).
-   * Only applies to trips of 7+ unique tiles.
+   * Only applies to trips of 7+ unique tiles. Threshold 0.25 = complain when 75%+ of route is non-sidewalk.
    */
   private static readonly SIDEWALK_COMPLAINT_MIN_TILES = 7;
+  private static readonly SIDEWALK_COMPLAINT_THRESHOLD = 0.25;
 
   private checkConcreteTilePercentage(pedestrian: PedestrianEntity): void {
     if (!pedestrian.actualPathTiles || pedestrian.actualPathTiles.length === 0) {
@@ -757,7 +768,7 @@ export class PedestrianSystem {
 
     const sidewalkPercentage = sidewalkTileCount / totalUniqueTiles;
 
-    if (sidewalkPercentage < 0.5 && pedestrian.name) {
+    if (sidewalkPercentage < PedestrianSystem.SIDEWALK_COMPLAINT_THRESHOLD && pedestrian.name) {
       // Show message
       MessageSystem.insufficientSidewalk(pedestrian.name);
       

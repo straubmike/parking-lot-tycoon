@@ -5,7 +5,7 @@ import { GameSystems } from '@/core/GameSystems';
 import { SpawnerManager } from '@/managers/SpawnerManager';
 import { GridManager } from '@/core/GridManager';
 import { ParkingTimerSystem } from '@/systems/ParkingTimerSystem';
-import { getChallengeById, getSpawnIntervalMsForSchedule } from '@/config/challenges.config';
+import { getChallengeById, getSpawnIntervalMsForSchedule, getPotentialParkerChanceForSchedule } from '@/config/challenges.config';
 import { setParkingRateConfig } from '@/config/parkingRateConfig';
 import { ChallengeSystem } from '@/systems/ChallengeSystem';
 import { completeChallenge } from '@/managers/ProgressManager';
@@ -43,7 +43,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
     const challenge = getChallengeById(this.challengeId);
     const budget = challenge?.budget ?? 10000;
     this.initialBudget = budget;
-    GameSystems.resetForChallenge(budget, this.gridManager, this.gridWidth, this.gridHeight);
+    GameSystems.resetForChallenge(budget, this.gridManager, this.gridWidth, this.gridHeight, challenge?.startTimeMinutes);
 
     if (challenge && !this.isDevMode) {
       this.challengeSystem = new ChallengeSystem(challenge);
@@ -53,6 +53,14 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
         this.vehicleSystem.setGetSpawnIntervalMs(() => {
           const totalMinutes = TimeSystem.getInstance().getTotalMinutes();
           return getSpawnIntervalMsForSchedule(totalMinutes, challenge.vehicleSpawnSchedule!, fallbackSpawnMs);
+        });
+      }
+      const fallbackParkerChance = challenge.potentialParkerChance ?? 0.5;
+      this.vehicleSystem.setPotentialParkerChance(fallbackParkerChance);
+      if (challenge.potentialParkerSchedule?.length) {
+        this.vehicleSystem.setGetPotentialParkerChance(() => {
+          const totalMinutes = TimeSystem.getInstance().getTotalMinutes();
+          return getPotentialParkerChanceForSchedule(totalMinutes, challenge.potentialParkerSchedule!, fallbackParkerChance);
         });
       }
       if (challenge.pedestrianRespawnBands?.length) {
@@ -103,6 +111,8 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
         boothRefusalMessage: challenge.boothRefusalToParkMessage ?? null,
       });
     }
+
+    this.populateWinConditionsUI(challenge?.winConditions);
 
     this.tools = new GridEditorController(this);
     this.tools.init();
@@ -180,6 +190,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
       return;
     }
     super.update(time, delta);
+    this.updateWinConditionsUI();
     // After clock update: consume rating-finalized flag (set at 11:59 PM) and show win/lose overlay
     if (GameSystems.time.consumeRatingFinalized()) {
       const metrics = this.gatherChallengeMetrics();
@@ -229,6 +240,57 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
       parkingSpotCount: parkingSpots.length,
       ploppableCountByType,
     };
+  }
+
+  private populateWinConditionsUI(winConditions?: Array<{ description: string }>): void {
+    const listEl = document.getElementById('win-conditions-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    if (!winConditions || winConditions.length === 0) return;
+    for (let i = 0; i < winConditions.length; i++) {
+      const item = document.createElement('div');
+      item.className = 'win-condition-item';
+      item.id = `win-condition-${i}`;
+      const check = document.createElement('span');
+      check.className = 'win-condition-check';
+      check.textContent = '○';
+      const text = document.createElement('span');
+      text.textContent = winConditions[i].description;
+      item.appendChild(check);
+      item.appendChild(text);
+      listEl.appendChild(item);
+    }
+  }
+
+  private updateWinConditionsUI(): void {
+    const challenge = getChallengeById(this.challengeId);
+    if (!challenge?.winConditions) return;
+    const metrics = this.gatherChallengeMetrics();
+    for (let i = 0; i < challenge.winConditions.length; i++) {
+      const el = document.getElementById(`win-condition-${i}`);
+      if (!el) continue;
+      const checkEl = el.querySelector('.win-condition-check');
+      const wc = challenge.winConditions[i];
+      let met = false;
+      switch (wc.type) {
+        case 'profit': met = (metrics.profit ?? 0) >= wc.value; break;
+        case 'rating': case 'min_rating': met = (metrics.rating ?? 0) >= wc.value; break;
+        case 'time': met = (metrics.currentDay ?? 0) >= wc.value; break;
+        case 'min_parking_spots': met = (metrics.parkingSpotCount ?? 0) >= wc.value; break;
+        case 'required_ploppables':
+          if (wc.ploppableType != null && wc.ploppableCount != null) {
+            met = (metrics.ploppableCountByType?.[wc.ploppableType] ?? 0) >= wc.ploppableCount;
+          }
+          break;
+      }
+      if (met) {
+        el.classList.add('met');
+        if (checkEl) checkEl.textContent = '●';
+      } else {
+        el.classList.remove('met');
+        if (checkEl) checkEl.textContent = '○';
+      }
+    }
   }
 
   private showWinOverlay(): void {

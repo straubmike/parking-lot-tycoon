@@ -18,7 +18,7 @@ export class PassabilitySystem {
     'Parking Spot': true, // Parking spots are passable (vehicles park in them)
     'Trash Can': 'pedestrian-only', // Trash cans are passable by pedestrians only (vehicles cannot pass)
     'Vending Machine': 'pedestrian-only', // Vending machines are passable by pedestrians only
-    'Dumpster': false, // Dumpsters are impassable (block movement)
+    'Dumpster': 'pedestrian-only', // Peds can path onto cell for trash need; vehicles cannot pass
     'Tree': 'pedestrian-only', // Trees are passable by pedestrians only
     'Shrub': false, // Shrubs are impassable (block movement)
     'Flower Patch': true, // Flower patches are passable (decorations)

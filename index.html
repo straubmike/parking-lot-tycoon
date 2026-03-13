@@ -241,7 +241,38 @@
         #game-stats.expanded #rating-breakdown {
             display: flex;
         }
-        
+
+        #win-conditions-section {
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 5px;
+            padding-top: 8px;
+            border-top: 1px solid #3a3a3a;
+        }
+
+        #game-stats.expanded #win-conditions-section {
+            display: flex;
+        }
+
+        .win-condition-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #aaa;
+        }
+
+        .win-condition-item.met {
+            color: #81c784;
+        }
+
+        .win-condition-check {
+            font-size: 12px;
+            width: 14px;
+            text-align: center;
+        }
+
         .rating-component {
             display: flex;
             justify-content: space-between;
@@ -562,6 +593,9 @@
             <div class="stat-item">
                 <span class="stat-label">Budget</span>
                 <span id="game-budget" class="stat-value">$10,000</span>
+                <div id="win-conditions-section">
+                    <div id="win-conditions-list"></div>
+                </div>
             </div>
             <div class="stat-item" style="align-items: flex-start; min-width: 200px;">
                 <span class="stat-label">Rating (Current : Previous)</span>
@@ -605,7 +639,7 @@
                 <button class="ploppable-button" data-name="Parking Spot" data-description="Every lot needs one, right?">🅿️</button>
                 <button class="ploppable-button" data-name="Trash Can" data-description="Unsightly but better than having litter." data-orientation-type="A" data-passable="true">🗑️</button>
                 <button class="ploppable-button" data-name="Vending Machine" data-description="Dispenses refreshments." data-orientation-type="B" data-passable="true">🥤</button>
-                <button class="ploppable-button" data-name="Dumpster" data-description="A large container for trash required by some businesses." data-orientation-type="B" data-passable="false" data-size="2">🗄️</button>
+                <button class="ploppable-button" data-name="Dumpster" data-description="A large container for trash required by some businesses." data-orientation-type="B" data-passable="false">🗄️</button>
                 <button class="ploppable-button" data-name="Tree" data-description="Trees are decorative barriers that increase lot appeal." data-passable="true">🌳</button>
                 <button class="ploppable-button" data-name="Shrub" data-description="Shrubs are decorative barriers that increase lot appeal." data-passable="false">🌿</button>
                 <button class="ploppable-button" data-name="Flower Patch" data-description="Flowers are decorations that increase lot appeal." data-passable="true">🌸</button>

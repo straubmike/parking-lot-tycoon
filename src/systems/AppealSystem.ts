@@ -27,7 +27,7 @@ export class AppealSystem {
     'Tree': { appealDelta: 1, radius: 3, shape: 'circular' },
     'Shrub': { appealDelta: 1, radius: 2, shape: 'circular' },
     'Flower Patch': { appealDelta: 1, radius: 1, shape: 'square' },
-    'Dumpster': { appealDelta: -1, radius: 3, shape: 'circular', isTwoTile: true },
+    'Dumpster': { appealDelta: -1, radius: 3, shape: 'circular' },
     'Trash Can': { appealDelta: -1, radius: 2, shape: 'circular' },
     'Portable Toilet': { appealDelta: -1, radius: 2, shape: 'circular' },
     'Bench': { appealDelta: 1, radius: 1, shape: 'circular' },

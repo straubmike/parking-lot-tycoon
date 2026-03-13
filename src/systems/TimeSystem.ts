@@ -200,10 +200,11 @@ export class TimeSystem {
   }
 
   /**
-   * Reset time system to initial state (Day 0, 12:00 AM)
+   * Reset time system to initial state.
+   * @param startMinutes - Game minute to begin at (0-1439). 0 = midnight, 420 = 7 AM. Default 0.
    */
-  reset(): void {
-    this.gameMinutes = 0;
+  reset(startMinutes: number = 0): void {
+    this.gameMinutes = Math.max(0, Math.min(1439, Math.floor(startMinutes)));
     this.currentDay = 0;
     this.realTimeAccumulator = 0;
     this.dayJustChanged = false;

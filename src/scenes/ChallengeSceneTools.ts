@@ -442,20 +442,15 @@ export class GridEditorController {
       return true;
     }
 
-    // Type B 2-tile: Dumpster (only south/west have art)
-    if (type === 'Dumpster') {
-      if (orientation !== 2 && orientation !== 3) return false;
-      const secondCell = PloppableManager.getSecondCellForTwoTile(gridX, gridY, orientation, gridWidth, gridHeight);
-      if (!secondCell) return false;
-      const center1X = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
-      const center1Y = (gridX + gridY) * (TILE_HEIGHT / 2) + oy;
-      const center2X = (secondCell.x - secondCell.y) * (TILE_WIDTH / 2) + ox;
-      const center2Y = (secondCell.x + secondCell.y) * (TILE_HEIGHT / 2) + oy;
-      const centerX = (center1X + center2X) / 2;
-      const centerY = (center1Y + center2Y) / 2;
-      const DUMPSTER_ORIGIN_OFFSET_Y = 15;
+    // Dumpster: single cell, center (south/west have art)
+    if (type === 'Dumpster' && spriteKey && (orientation === 2 || orientation === 3)) {
+      const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
+      const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + oy;
+      const DUMPSTER_OFFSET_Y = 5;
+      const DUMPSTER_OFFSET_X = 10;
+      const offsetX = orientation === 2 ? -DUMPSTER_OFFSET_X : DUMPSTER_OFFSET_X;
       const flipX = orientation === 2;
-      this.createGhostSprite(centerX, centerY + DUMPSTER_ORIGIN_OFFSET_Y, spriteKey!,
+      this.createGhostSprite(centerX + offsetX, centerY + DUMPSTER_OFFSET_Y, spriteKey,
         config?.originX ?? 0.5, config?.originY ?? 1.0, flipX,
         TILE_WIDTH * 0.5, config?.scaleMultiplier ?? 1);
       return true;
@@ -752,7 +747,7 @@ export class GridEditorController {
         gridManager.setCellData(gridX, gridY, { ...cellData, behavesLikeSidewalk: true });
       }
       if (this.selectedPloppableType === 'Pedestrian Spawner') {
-        SpawnerManager.addPedestrianSpawner(gridX, gridY, gridManager, pedestrianSystem);
+        SpawnerManager.addPedestrianSpawner(gridX, gridY, pedestrianSystem);
       }
       this.ctx.redrawGrid();
       this.lastPaintedCell = { x: gridX, y: gridY };
