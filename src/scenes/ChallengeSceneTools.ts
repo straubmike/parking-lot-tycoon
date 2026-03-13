@@ -456,6 +456,20 @@ export class GridEditorController {
       return true;
     }
 
+    // Portable Toilet: south (2) and west (3) only; origin middle-bottom; west flipped
+    if (type === 'Portable Toilet' && spriteKey && (orientation === 2 || orientation === 3)) {
+      const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
+      const centerY = (gridX + gridY) * (TILE_HEIGHT / 2) + oy;
+      const POTTY_OFFSET_Y = 5;
+      const POTTY_OFFSET_X = 10;
+      const offsetX = orientation === 2 ? -POTTY_OFFSET_X : POTTY_OFFSET_X;
+      const flipX = orientation === 3;
+      this.createGhostSprite(centerX + offsetX, centerY + POTTY_OFFSET_Y, spriteKey,
+        config?.originX ?? 0.5, config?.originY ?? 1.0, flipX,
+        TILE_WIDTH * 0.5, config?.scaleMultiplier ?? 1);
+      return true;
+    }
+
     // Speed Bump: center position, 2 orientations with flip + rotation
     if (type === 'Speed Bump' && spriteKey) {
       const centerX = (gridX - gridY) * (TILE_WIDTH / 2) + ox;
@@ -947,7 +961,7 @@ export class GridEditorController {
           this.isDemolishMode = false;
           document.getElementById('demolish-button')?.classList.remove('selected');
           this.selectedPloppableType = ploppableName;
-          this.ploppableOrientation = (ploppableName === 'Vending Machine' || ploppableName === 'Dumpster' || ploppableName === 'Speed Bump') ? 2 : 0;
+          this.ploppableOrientation = (ploppableName === 'Vending Machine' || ploppableName === 'Dumpster' || ploppableName === 'Portable Toilet' || ploppableName === 'Speed Bump') ? 2 : 0;
           if (this.isPermanentMode) {
             this.isPermanentMode = false;
             const permanentButton = document.getElementById('permanent-button');
@@ -1056,10 +1070,10 @@ export class GridEditorController {
         const rotationMap = [1, 3, 0, 2];
         this.ploppableOrientation = rotationMap[this.ploppableOrientation];
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Speed Bump') {
+      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
         this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Portable Toilet', 'Street Light', 'Bench', 'Crosswalk'].includes(this.selectedPloppableType || '')) {
+      } else if (['Trash Can', 'Street Light', 'Bench', 'Crosswalk'].includes(this.selectedPloppableType || '')) {
         this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
       }
@@ -1069,10 +1083,10 @@ export class GridEditorController {
         const rotationMap = [2, 0, 3, 1];
         this.ploppableOrientation = rotationMap[this.ploppableOrientation];
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Speed Bump') {
+      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
         this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Portable Toilet', 'Street Light', 'Bench', 'Crosswalk', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
+      } else if (['Trash Can', 'Street Light', 'Bench', 'Crosswalk', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
       }

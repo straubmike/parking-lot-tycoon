@@ -682,6 +682,24 @@ export class PloppableManager {
           if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
           return sprite;
         }
+
+        // Portable Toilet: lotty-potty.png for south (2) and west (3) only; origin middle-bottom; west (3) flipped
+        const pottyKey = PLOPPABLE_SPRITES['Portable Toilet'];
+        if (ploppable.type === 'Portable Toilet' && pottyKey && (orientation === 2 || orientation === 3)) {
+          const config = PLOPPABLE_SPRITE_CONFIG['Portable Toilet'];
+          const flipX = orientation === 3; // west = flipped
+          const POTTY_OFFSET_Y = 5;
+          const POTTY_OFFSET_X = 10;
+          const offsetX = orientation === 2 ? -POTTY_OFFSET_X : POTTY_OFFSET_X;
+          const sprite = scene.add.sprite(centerX + offsetX, centerY + POTTY_OFFSET_Y, pottyKey);
+          sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
+          sprite.setDepth(3);
+          sprite.setFlipX(flipX);
+          const baseScale = TILE_WIDTH * 0.5;
+          const scaleMult = config?.scaleMultiplier ?? 1;
+          if (sprite.width > 0) sprite.setScale((baseScale / sprite.width) * scaleMult);
+          return sprite;
+        }
         
         // Create main emoji label at center (fallback for types without sprite or disabled orientations)
         const label = scene.add.text(centerX, centerY, emoji, {
