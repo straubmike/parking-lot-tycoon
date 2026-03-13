@@ -81,12 +81,124 @@ export class GridRenderer {
     graphics.fillTriangle(topX, topY, rightX, rightY, bottomX, bottomY);
     graphics.fillTriangle(topX, topY, bottomX, bottomY, leftX, leftY);
     
+    // Draw crosswalk stripes if cell has a crosswalk ploppable
+    if (cellData?.ploppable?.type === 'Crosswalk') {
+      this.drawCrosswalkStripes(
+        topX, topY, rightX, rightY, bottomX, bottomY, leftX, leftY,
+        cellData.ploppable.orientation ?? 0,
+        graphics,
+        false // not ghost
+      );
+    }
+
     // Draw border
     graphics.lineStyle(1, 0x555555, 1);
     graphics.lineBetween(topX, topY, rightX, rightY);
     graphics.lineBetween(rightX, rightY, bottomX, bottomY);
     graphics.lineBetween(bottomX, bottomY, leftX, leftY);
     graphics.lineBetween(leftX, leftY, topX, topY);
+  }
+
+  /**
+   * Draw crosswalk stripes: 4 parallel bands alternating white and transparent.
+   * Bands run parallel to the game grid. Orientation 0 = NS passage (bands along row diagonal),
+   * orientation 1 = WE passage (bands along column diagonal).
+   * Transparent stripes are skipped so the underlying surface shows through.
+   */
+  static drawCrosswalkStripes(
+    topX: number, topY: number, rightX: number, rightY: number,
+    bottomX: number, bottomY: number, leftX: number, leftY: number,
+    orientation: number,
+    graphics: Phaser.GameObjects.Graphics,
+    isGhost: boolean
+  ): void {
+    const centerY = (topY + bottomY) / 2;
+
+    // Crosswalk uses only 2 orientations: 0 = NS, 1 = WE (map legacy 2,3 to 0,1)
+    const orient = orientation % 2;
+    const isNS = orient === 0;
+
+    // Grid directions in screen space: row = (TILE_WIDTH/2, TILE_HEIGHT/2), column = (-TILE_WIDTH/2, TILE_HEIGHT/2)
+    // NS: bands run along row direction (slope TILE_HEIGHT/TILE_WIDTH). Slice with lines parallel to column (slope -TILE_HEIGHT/TILE_WIDTH)
+    // WE: bands run along column direction. Slice with lines parallel to row
+    const rowSlope = TILE_HEIGHT / TILE_WIDTH; // 0.5
+    const colSlope = -TILE_HEIGHT / TILE_WIDTH; // -0.5
+
+    // Line form: y = slope * (x - centerX) + centerY + offset => y = slope*x + (centerY - slope*centerX + offset)
+    // For slice lines we need 5 parallel lines. Extent: from left vertex (leftX, centerY) to right (rightX, centerY)
+    // For slope colSlope: at leftX, y = centerY. So line through (leftX, centerY): centerY = colSlope*leftX + b => b = centerY - colSlope*leftX
+    const whiteAlpha = isGhost ? 0.5 : 1;
+    const whiteColor = 0xffffff;
+
+    const diamond: { x: number; y: number }[] = [
+      { x: topX, y: topY },
+      { x: rightX, y: rightY },
+      { x: bottomX, y: bottomY },
+      { x: leftX, y: leftY },
+    ];
+
+    // Clip polygon to half-plane ax + by <= c (Sutherland-Hodgman).
+    const clipPoly = (pts: { x: number; y: number }[], a: number, b: number, c: number): { x: number; y: number }[] => {
+      const out: { x: number; y: number }[] = [];
+      const n = pts.length;
+      for (let i = 0; i < n; i++) {
+        const p = pts[i];
+        const q = pts[(i + 1) % n];
+        const pIn = a * p.x + b * p.y <= c;
+        const qIn = a * q.x + b * q.y <= c;
+        if (pIn && qIn) {
+          out.push(q);
+        } else if (pIn && !qIn) {
+          const denom = a * (q.x - p.x) + b * (q.y - p.y);
+          const t = Math.abs(denom) < 1e-9 ? 0 : (c - a * p.x - b * p.y) / denom;
+          out.push({ x: p.x + t * (q.x - p.x), y: p.y + t * (q.y - p.y) });
+        } else if (!pIn && qIn) {
+          const denom = a * (q.x - p.x) + b * (q.y - p.y);
+          const t = Math.abs(denom) < 1e-9 ? 0 : (c - a * p.x - b * p.y) / denom;
+          out.push({ x: p.x + t * (q.x - p.x), y: p.y + t * (q.y - p.y) });
+          out.push(q);
+        }
+      }
+      return out;
+    };
+
+    const drawBandPolygon = (pts: { x: number; y: number }[]): void => {
+      if (pts.length < 3) return;
+      graphics.fillStyle(whiteColor, whiteAlpha);
+      for (let i = 1; i < pts.length - 1; i++) {
+        graphics.fillTriangle(pts[0].x, pts[0].y, pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y);
+      }
+    };
+
+    if (isNS) {
+      // Slice with lines parallel to column direction: slope colSlope (-0.5). Form: colSlope*x - y + b = 0 => -y = -colSlope*x - b => y = colSlope*x + b
+      // So line is y = colSlope*x + b. b = y - colSlope*x. At center: b = centerY - colSlope*centerX.
+      // Extent: left (leftX, centerY) gives b_min = centerY - colSlope*leftX. Right gives b_max = centerY - colSlope*rightX.
+      // Since colSlope < 0 and leftX < rightX: b_min = centerY - colSlope*leftX (larger), b_max = centerY - colSlope*rightX (smaller)
+      const bMin = centerY - colSlope * leftX;
+      const bMax = centerY - colSlope * rightX;
+      const bStep = (bMax - bMin) / 4;
+      for (let i = 0; i < 4; i += 2) {
+        const b0 = bMin + i * bStep;
+        const b1 = bMin + (i + 1) * bStep;
+        // Strip: b0 <= y - colSlope*x <= b1. Clip to colSlope*x - y <= -b0, then -colSlope*x + y <= b1
+        let poly = clipPoly(diamond, colSlope, -1, -b0);
+        poly = clipPoly(poly, -colSlope, 1, b1);
+        drawBandPolygon(poly);
+      }
+    } else {
+      // WE: slice with lines parallel to row direction: slope rowSlope (0.5)
+      const bMin = centerY - rowSlope * rightX;
+      const bMax = centerY - rowSlope * leftX;
+      const bStep = (bMax - bMin) / 4;
+      for (let i = 0; i < 4; i += 2) {
+        const b0 = bMin + i * bStep;
+        const b1 = bMin + (i + 1) * bStep;
+        let poly = clipPoly(diamond, rowSlope, -1, -b0);
+        poly = clipPoly(poly, -rowSlope, 1, b1);
+        drawBandPolygon(poly);
+      }
+    }
   }
 
   /**

@@ -9,6 +9,7 @@ import { getIsometricTilePoints } from '@/utils/isometric';
 import { Ploppable, COLOR_TO_SURFACE } from '@/types';
 import { GridManager } from '@/core/GridManager';
 import { GridInteractionHandler } from '@/systems/GridInteractionHandler';
+import { GridRenderer } from '@/systems/GridRenderer';
 import { PloppableManager } from '@/systems/PloppableManager';
 import { PLOPPABLE_SPRITES, PLOPPABLE_SPRITE_CONFIG } from '@/renderers/EntityRenderer';
 import { SpawnerManager } from '@/managers/SpawnerManager';
@@ -297,6 +298,18 @@ export class GridEditorController {
 
     // Try to draw a ghost sprite preview for ploppables that have sprite art
     if (!this.isDemolishMode && this.selectedPloppableType && this.tryDrawGhostPreview(gridX, gridY, ox, oy, gridWidth, gridHeight, gridManager)) {
+      return;
+    }
+
+    // Crosswalk: draw ghost stripes (semi-transparent), no arrow
+    if (!this.isDemolishMode && this.selectedPloppableType === 'Crosswalk') {
+      const [top, right, bottom, left] = offsetPoints;
+      GridRenderer.drawCrosswalkStripes(
+        top.x, top.y, right.x, right.y, bottom.x, bottom.y, left.x, left.y,
+        this.ploppableOrientation,
+        g,
+        true // isGhost
+      );
       return;
     }
 
@@ -677,7 +690,9 @@ export class GridEditorController {
         if (!cellData?.ploppable || cellData.ploppable.type !== 'Parking Spot') return;
       }
       if (this.selectedPloppableType !== 'Security Camera' && this.selectedPloppableType !== 'Parking Meter') {
-        if (!PloppableManager.canPlacePloppable(gridX, gridY, gridManager, this.selectedPloppableType, this.ploppableOrientation, gridWidth, gridHeight)) return;
+        if (!PloppableManager.canPlacePloppable(gridX, gridY, gridManager, this.selectedPloppableType, this.ploppableOrientation, gridWidth, gridHeight)) {
+          return;
+        }
       }
       const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
       const orientationType = button?.getAttribute('data-orientation-type') as 'A' | 'B' | undefined;
@@ -755,7 +770,11 @@ export class GridEditorController {
       if (this.selectedPloppableType === 'Tree' || this.selectedPloppableType === 'Shrub' || this.selectedPloppableType === 'Flower Patch') {
         ploppable.spriteFlip = Math.random() < 0.5;
       }
-      PloppableManager.placePloppable(gridX, gridY, ploppable, gridManager, gridWidth, gridHeight);
+      const placed = PloppableManager.placePloppable(gridX, gridY, ploppable, gridManager, gridWidth, gridHeight);
+      if (!placed) {
+        GameSystems.economy.earn(cost);
+        return;
+      }
       if (this.selectedPloppableType === 'Crosswalk') {
         const cellData = gridManager.getCellData(gridX, gridY);
         gridManager.setCellData(gridX, gridY, { ...cellData, behavesLikeSidewalk: true });
@@ -1027,8 +1046,9 @@ export class GridEditorController {
         if (this.selectedPloppableType === 'Pedestrian Spawner') {
           description = 'Click a cell to place a pedestrian spawner (🚶). Pedestrians will spawn here and wander randomly on the pedestrian rail grid.';
         } else {
-          const rotTypes = ['Parking Spot', 'Trash Can', 'Vending Machine', 'Dumpster', 'Portable Toilet', 'Street Light', 'Bench', 'Speed Bump', 'Crosswalk', 'Parking Booth'];
+          const rotTypes = ['Parking Spot', 'Trash Can', 'Vending Machine', 'Dumpster', 'Portable Toilet', 'Street Light', 'Bench', 'Speed Bump', 'Parking Booth'];
           if (rotTypes.includes(this.selectedPloppableType)) instructions = 'Use Q and E keys to rotate orientation.';
+          if (this.selectedPloppableType === 'Crosswalk') instructions = 'Requires asphalt. Use Q and E keys to rotate orientation.';
           if (this.selectedPloppableType === 'Security Camera') instructions = 'Can only be placed on cells that already contain a Street Light.';
           if (this.selectedPloppableType === 'Parking Spot') instructions = 'Can only be placed on dirt, gravel, or asphalt. Use Q and E to rotate.';
           if (this.selectedPloppableType === 'Parking Meter') instructions = 'Can only be placed on cells that already contain a Parking Spot.';
@@ -1073,8 +1093,11 @@ export class GridEditorController {
       } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
         this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Street Light', 'Bench', 'Crosswalk'].includes(this.selectedPloppableType || '')) {
+      } else if (['Trash Can', 'Street Light', 'Bench'].includes(this.selectedPloppableType || '')) {
         this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
+        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+      } else if (this.selectedPloppableType === 'Crosswalk') {
+        this.ploppableOrientation = this.ploppableOrientation === 0 ? 1 : 0;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
       }
     });
@@ -1086,8 +1109,11 @@ export class GridEditorController {
       } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
         this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Street Light', 'Bench', 'Crosswalk', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
+      } else if (['Trash Can', 'Street Light', 'Bench', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
         this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
+        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+      } else if (this.selectedPloppableType === 'Crosswalk') {
+        this.ploppableOrientation = this.ploppableOrientation === 0 ? 1 : 0;
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
       }
     });

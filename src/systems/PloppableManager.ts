@@ -397,6 +397,11 @@ export class PloppableManager {
     if (ploppable.type === 'Parking Spot') {
       return null;
     }
+
+    // Crosswalk is drawn as stripes in GridRenderer.drawCell, not as a sprite/emoji
+    if (ploppable.type === 'Crosswalk') {
+      return null;
+    }
     
     // For 2-tile ploppables, handle rendering based on type
     const size = this.getPloppableSize(ploppable.type);

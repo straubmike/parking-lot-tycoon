@@ -13,7 +13,7 @@ export const PLOPPABLE_COSTS: Record<string, number> = {
   'Tree': 80,
   'Portable Toilet': 100,
   'Speed Bump': 90,
-  'Crosswalk': 110,
+  'Crosswalk': 5,  // Paint stripes (similar to parking spot marking, lane lines $1/edge)
   'Street Light': 120,
   'Vending Machine': 150,
   'Parking Spot': 5,  // Stall marking paint (~3 edges worth, like lane lines)
