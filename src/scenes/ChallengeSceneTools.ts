@@ -1220,24 +1220,61 @@ export class GridEditorController {
   }
 
   private importGrid(file: File): void {
-    const gridManager = this.ctx.getGridManager();
-    const gridWidth = this.ctx.getGridWidth();
-    const gridHeight = this.ctx.getGridHeight();
-    const vehicleSystem = this.ctx.getVehicleSystem();
-    const pedestrianSystem = this.ctx.getPedestrianSystem();
     const reader = new FileReader();
     reader.onload = (e) => {
       const content = e.target?.result as string;
-      let pairs: Array<[number, number, number, number]> | undefined;
+      let parsed: {
+        gridWidth?: number;
+        gridHeight?: number;
+        gridSize?: number;
+        vehicleSpawnerPairs?: Array<[number, number, number, number]>;
+      } = {};
       try {
-        const data = JSON.parse(content) as { vehicleSpawnerPairs?: Array<[number, number, number, number]> };
-        pairs = data.vehicleSpawnerPairs;
+        parsed = JSON.parse(content);
       } catch {
-        // ignore
+        // fall through — deserializeGrid will fail and alert below
       }
+      const pairs = parsed.vehicleSpawnerPairs;
+
+      // Dev Mode: auto-resize the grid to match the file's own dimensions before
+      // deserializing, so rows/columns beyond the current grid are not silently
+      // clamped by GridManager.deserializeGrid. Non-dev challenges keep their
+      // fixed lot size on purpose, so the clamp still applies there.
+      if (this.ctx.getIsDevMode()) {
+        const fileW =
+          typeof parsed.gridWidth === 'number' ? parsed.gridWidth
+          : typeof parsed.gridSize === 'number' ? parsed.gridSize
+          : undefined;
+        const fileH =
+          typeof parsed.gridHeight === 'number' ? parsed.gridHeight
+          : typeof parsed.gridSize === 'number' ? parsed.gridSize
+          : undefined;
+        if (
+          fileW !== undefined && fileH !== undefined &&
+          fileW >= 1 && fileH >= 1 && fileW <= 100 && fileH <= 100 &&
+          (fileW !== this.ctx.getGridWidth() || fileH !== this.ctx.getGridHeight())
+        ) {
+          try {
+            this.ctx.resizeGrid(fileW, fileH);
+          } catch (err) {
+            console.error('Failed to resize grid to match imported file:', err);
+          }
+        }
+      }
+
+      // Re-fetch these after the possible resize — `resizeGrid` replaces the
+      // GridManager and reinitializes the vehicle/pedestrian systems.
+      const gridManager = this.ctx.getGridManager();
+      const gridWidth = this.ctx.getGridWidth();
+      const gridHeight = this.ctx.getGridHeight();
+      const vehicleSystem = this.ctx.getVehicleSystem();
+      const pedestrianSystem = this.ctx.getPedestrianSystem();
+
       const success = gridManager.deserializeGrid(content);
       if (success) {
-        SpawnerManager.rebuildSpawnerPairsFromGrid(gridManager, gridWidth, gridHeight, vehicleSystem, pedestrianSystem, pairs);
+        SpawnerManager.rebuildSpawnerPairsFromGrid(
+          gridManager, gridWidth, gridHeight, vehicleSystem, pedestrianSystem, pairs
+        );
         this.ctx.redrawGrid();
       } else {
         alert('Failed to import grid. Invalid file format.');
@@ -1382,8 +1419,11 @@ export class GridEditorController {
       if (importButton && importInput) {
         importButton.addEventListener('click', () => importInput.click(), { signal });
         importInput.addEventListener('change', (e) => {
-          const file = (e.target as HTMLInputElement).files?.[0];
+          const target = e.target as HTMLInputElement;
+          const file = target.files?.[0];
           if (file) this.importGrid(file);
+          // Reset so picking the same file again still fires `change`.
+          target.value = '';
         }, { signal });
       }
     });
