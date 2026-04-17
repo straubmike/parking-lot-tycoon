@@ -34,8 +34,6 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            /* Hidden until MainMenuScene is ready — avoids an empty Phaser canvas flash on load */
-            visibility: hidden;
         }
         
         #game-container canvas {
@@ -566,8 +564,10 @@
 </head>
 <body>
     <div id="app-container">
-        <!-- Game Stats Panel -->
-        <div id="game-stats">
+        <!-- Game Stats Panel. Hidden by default so it doesn't flash on page load before
+             MainMenuScene.create() runs; gameplay scenes call setGameUIVisibility(true),
+             which clears the inline style and lets the CSS rule (display: flex) take over. -->
+        <div id="game-stats" style="display: none;">
             <div class="stat-item">
                 <span class="stat-label">Time</span>
                 <span id="game-clock" class="stat-value">12:00 AM</span>
@@ -619,7 +619,7 @@
             </div>
         </div>
         
-        <div id="left-panel" class="side-panel">
+        <div id="left-panel" class="side-panel" style="display: none;">
             <div class="color-palette-title">Surface Material</div>
             <div class="button-container">
                 <button class="color-button" data-color="ffffff" data-name="Concrete" data-description="Good for sidewalks, pedestrians will prefer to walk here. Vehicles can drive on it but prefer if it's only when entering and exiting the lot." style="background-color: #ffffff;"></button>
@@ -683,7 +683,7 @@
             </div>
         </div>
         <div id="game-container"></div>
-        <div id="right-panel" class="side-panel">
+        <div id="right-panel" class="side-panel" style="display: none;">
             <div id="selection-info" style="display: none;">
                 <div class="section-title">Selection Info</div>
                 <div id="selection-color-preview" style="width: 100%; height: 60px; border: 2px solid #555; border-radius: 4px; margin-bottom: 15px;"></div>

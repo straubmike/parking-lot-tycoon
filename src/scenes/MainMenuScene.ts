@@ -35,8 +35,6 @@ export class MainMenuScene extends Phaser.Scene {
   create(): void {
     setGameUIVisibility(false);
     this.buildMenuDOM();
-    const gameContainer = document.getElementById('game-container');
-    if (gameContainer) (gameContainer as HTMLElement).style.visibility = 'visible';
   }
 
   private buildMenuDOM(): void {
@@ -281,8 +279,6 @@ export class MainMenuScene extends Phaser.Scene {
     const isDevMode = challengeId === 'dev-mode';
     if (isDevMode && !isDevChallengeEnabled()) return;
     setGameUIVisibility(true);
-    const gameContainer = document.getElementById('game-container');
-    if (gameContainer) (gameContainer as HTMLElement).style.visibility = 'visible';
     // Remove menu overlay immediately so the game canvas is visible (don't rely on shutdown order)
     document.getElementById('main-menu-overlay')?.remove();
     this.menuOverlay = null;
