@@ -23,8 +23,10 @@ export class VehicleSystem {
   private readonly speedBumpMaxSpeed: number = 30; // Maximum speed on speed bump (pixels per second)
   private potentialParkerChance: number = 0.5;
   private getPotentialParkerChanceCallback?: () => number;
-  private readonly minParkingDuration: number = 5000; // Minimum parking time (5 seconds)
-  private readonly maxParkingDuration: number = 15000; // Maximum parking time (15 seconds)
+  private minParkingDuration: number = 5000; // Minimum parking time (real ms; 1 game min = 1 real sec)
+  private maxParkingDuration: number = 15000; // Maximum parking time (real ms)
+  private movieGoerModeEnabled: boolean = false;
+  private movieGoerDurationFn: (() => number | null) | null = null;
   private getCellData: (x: number, y: number) => CellData | undefined;
   private getParkingSpots: () => Ploppable[];
   private pedestrianSystem?: PedestrianSystem;
@@ -116,6 +118,43 @@ export class VehicleSystem {
    */
   setDriverExitsVehicleProbability(p: number): void {
     this.driverExitsVehicleProbability = Math.max(0, Math.min(1, p));
+  }
+
+  /**
+   * Override parking duration range in real ms (1 game min = 1 real sec).
+   * Example: 120000–122000 = 2 game hours + ~2 min variance.
+   */
+  setParkingDurationMs(minMs: number, maxMs: number): void {
+    this.minParkingDuration = Math.max(500, minMs);
+    this.maxParkingDuration = Math.max(this.minParkingDuration, maxMs);
+  }
+
+  /**
+   * Enable Drive-In movie-goer mode on parked vehicles.
+   * When enabled, each parker schedules 0/1/2 need events during its parking window; each event spawns
+   * a one-shot pedestrian that walks from the car to a need ploppable and back, without triggering the
+   * vehicle to leave. The vehicle leaves strictly when its parkingTimer expires.
+   */
+  setMovieGoerMode(enabled: boolean): void {
+    this.movieGoerModeEnabled = enabled;
+  }
+
+  /**
+   * When set alongside movie-goer mode, this function is consulted on each parker-park to derive a
+   * per-vehicle parking duration in real ms (e.g. anchor to the next showtime end). Return null to
+   * fall back to the min/max range. Ignored when movie-goer mode is off.
+   */
+  setMovieGoerParkingDurationFn(fn: (() => number | null) | null): void {
+    this.movieGoerDurationFn = fn;
+  }
+
+  /** Compute the parking duration for a newly-parked vehicle (ms, real-time). */
+  private pickParkingDurationMs(): number {
+    if (this.movieGoerModeEnabled && this.movieGoerDurationFn) {
+      const dynamic = this.movieGoerDurationFn();
+      if (dynamic != null && dynamic > 0) return dynamic;
+    }
+    return this.minParkingDuration + Math.random() * (this.maxParkingDuration - this.minParkingDuration);
   }
 
   /**
@@ -485,8 +524,7 @@ export class VehicleSystem {
               vehicle.y === vehicle.reservedSpotY) {
             // Start parking
             vehicle.state = 'parking';
-            vehicle.parkingDuration = this.minParkingDuration + 
-              Math.random() * (this.maxParkingDuration - this.minParkingDuration);
+            vehicle.parkingDuration = this.pickParkingDurationMs();
             vehicle.parkingTimer = vehicle.parkingDuration;
           } else {
             // Reached despawner
@@ -501,8 +539,7 @@ export class VehicleSystem {
           vehicle.x === vehicle.reservedSpotX &&
           vehicle.y === vehicle.reservedSpotY) {
         vehicle.state = 'parking';
-        vehicle.parkingDuration = this.minParkingDuration + 
-          Math.random() * (this.maxParkingDuration - this.minParkingDuration);
+        vehicle.parkingDuration = this.pickParkingDurationMs();
         vehicle.parkingTimer = vehicle.parkingDuration;
       } else {
         vehicle.state = 'despawning';
@@ -518,13 +555,18 @@ export class VehicleSystem {
     if (vehicle.parkingTimer === vehicle.parkingDuration) {
       // Just started parking - start the parking timer system
       ParkingTimerSystem.getInstance().startParkingTimer(vehicle.id);
+      if (this.movieGoerModeEnabled) {
+        vehicle.movieGoerMode = true;
+        vehicle.movieGoerNeedEvents = this.rollMovieGoerNeedEventTimes(vehicle.parkingDuration ?? this.maxParkingDuration);
+      }
     }
     
     // Spawn pedestrian when first entering parking state (with probability)
     if (this.pedestrianSystem) {
       const existingPedestrian = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
       if (!existingPedestrian && vehicle.parkingTimer === vehicle.parkingDuration) {
-        const shouldSpawn = Math.random() < this.driverExitsVehicleProbability;
+        // Movie-goer vehicles never spawn a destination-bound pedestrian. Need trips are fired below.
+        const shouldSpawn = !this.movieGoerModeEnabled && Math.random() < this.driverExitsVehicleProbability;
         vehicle.pedestrianSpawned = shouldSpawn;
         if (shouldSpawn) {
           this.pedestrianSystem.spawnPedestrianFromVehicle(
@@ -533,6 +575,21 @@ export class VehicleSystem {
             vehicle.y,
             vehicle.name
           );
+        }
+      }
+    }
+
+    // Drive-In: fire scheduled need events for this parker
+    if (vehicle.movieGoerMode && vehicle.movieGoerNeedEvents && vehicle.movieGoerNeedEvents.length > 0 && this.pedestrianSystem) {
+      for (let i = 0; i < vehicle.movieGoerNeedEvents.length; i++) {
+        vehicle.movieGoerNeedEvents[i] -= delta;
+      }
+      while (vehicle.movieGoerNeedEvents.length > 0 && vehicle.movieGoerNeedEvents[0] <= 0) {
+        vehicle.movieGoerNeedEvents.shift();
+        // Only spawn a new need-trip ped if there's no active ped for this car (prevents overlap).
+        const existing = this.pedestrianSystem.getPedestrianByVehicleId(vehicle.id);
+        if (!existing) {
+          this.pedestrianSystem.spawnMovieGoerNeedPedestrian(vehicle.id, vehicle.x, vehicle.y, vehicle.name);
         }
       }
     }
@@ -560,6 +617,24 @@ export class VehicleSystem {
   }
 
   /**
+   * Roll 0/1/2 drive-in need events, each at a random offset inside the parking window.
+   * Buffer 10% at both ends so the ped has time to return before the vehicle leaves.
+   * Returns remaining-time-to-fire values sorted ascending (element 0 fires first).
+   */
+  private rollMovieGoerNeedEventTimes(parkingDurationMs: number): number[] {
+    const numEvents = Math.floor(Math.random() * 3); // uniform {0, 1, 2}
+    if (numEvents === 0) return [];
+    const buffer = parkingDurationMs * 0.1;
+    const usable = Math.max(0, parkingDurationMs - 2 * buffer);
+    const times: number[] = [];
+    for (let i = 0; i < numEvents; i++) {
+      times.push(buffer + Math.random() * usable);
+    }
+    times.sort((a, b) => a - b);
+    return times;
+  }
+
+  /**
    * Start a parked vehicle leaving towards the despawner
    */
   private startVehicleLeaving(vehicle: VehicleEntity): void {
@@ -578,6 +653,13 @@ export class VehicleSystem {
     // Unreserve the parking spot
     if (vehicle.reservedSpotX !== undefined && vehicle.reservedSpotY !== undefined) {
       this.unreserveParkingSpot(vehicle.reservedSpotX, vehicle.reservedSpotY);
+    }
+
+    // Clean up any lingering peds tied to this vehicle. For standard challenges this is a no-op
+    // (destination-bound peds reach at_vehicle before the vehicle leaves). For Drive-In, this
+    // sweeps any stranded movie-goer need-trip peds whose timer expired mid-trip.
+    if (vehicle.pedestrianSpawned === false && this.pedestrianSystem) {
+      this.pedestrianSystem.removePedestriansForVehicle(vehicle.id);
     }
     
     // Roll a new random speed for leaving (between minSpeed and maxSpeed)

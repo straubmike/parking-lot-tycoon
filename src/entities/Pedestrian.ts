@@ -29,6 +29,7 @@ export class PedestrianEntity implements Pedestrian {
   rating?: number;
   unfulfilledNeeds?: ('trash' | 'thirst' | 'toilet')[];
   actualPathTiles?: { x: number; y: number }[];
+  isMovieGoerNeedTrip?: boolean;
 
   constructor(
     vehicleId: string,

@@ -52,20 +52,26 @@ export class NeedsSystem {
 
   /**
    * Calculate the target grid position for fulfilling a need at a ploppable
-   * For Type A / pedestrian-passable ploppables (trash can, vending machine):
-   *   returns the cell containing the ploppable itself
-   * For Type B impassable (dumpster, portable toilet):
+   * For Type A / pedestrian-passable ploppables (trash can, vending machine, dumpster, portable toilet):
+   *   returns the cell containing the ploppable itself. Toilet peds despawn on arrival
+   *   to simulate entering the cabinet (see PedestrianSystem despawn handling).
+   * For Type B impassable ploppables (none currently):
    *   returns the cell adjacent to the face of the ploppable (arrow = front face; target one cell counter-clockwise)
    */
   static getNeedTargetPosition(
     ploppable: Ploppable
   ): { x: number; y: number } {
-    // Pedestrian-passable ploppables (and Dumpster: peds path onto same cell for trash)
-    if (ploppable.orientationType === 'A' || ploppable.type === 'Vending Machine' || ploppable.type === 'Dumpster') {
+    // Pedestrian-passable need targets: walk onto the same cell
+    if (
+      ploppable.orientationType === 'A' ||
+      ploppable.type === 'Vending Machine' ||
+      ploppable.type === 'Dumpster' ||
+      ploppable.type === 'Portable Toilet'
+    ) {
       return { x: ploppable.x, y: ploppable.y };
     }
 
-    // Type B impassable: path to an adjacent cell (portable toilet)
+    // Type B impassable fallback: path to an adjacent front-face cell
     const orientation = ploppable.orientation || 0;
     const adjustedOrientation = (orientation + 3) % 4;
     switch (adjustedOrientation) {

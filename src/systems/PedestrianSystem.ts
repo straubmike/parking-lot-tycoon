@@ -352,6 +352,84 @@ export class PedestrianSystem {
   }
 
   /**
+   * Remove all pedestrians tied to a vehicle. Used when a movie-goer vehicle leaves with a
+   * still-active need-trip ped, or for any cleanup where the vehicle's peds should be purged.
+   */
+  removePedestriansForVehicle(vehicleId: string): void {
+    this.pedestrians = this.pedestrians.filter(p => p.vehicleId !== vehicleId);
+  }
+
+  /**
+   * Drive-In: spawn a one-shot need-trip pedestrian for a movie-goer who's still parked.
+   * The ped has no de/respawner destination — they walk from the car to a need ploppable and back
+   * to the car. When they arrive (state === 'at_vehicle') they're automatically removed in update().
+   * No ped is spawned if no need type can be resolved to a reachable ploppable.
+   */
+  spawnMovieGoerNeedPedestrian(
+    vehicleId: string,
+    vehicleX: number,
+    vehicleY: number,
+    vehicleName?: string
+  ): void {
+    // Pick a need type directly from the distribution (bypass needGenerationProbability;
+    // the 0/1/2 event count already gates "how often").
+    let needType: 'trash' | 'thirst' | 'toilet' | null = null;
+    const r = Math.random();
+    let cumulative = 0;
+    for (const [type, weight] of Object.entries(this.needTypeDistribution)) {
+      cumulative += weight;
+      if (r < cumulative) {
+        needType = type as 'trash' | 'thirst' | 'toilet';
+        break;
+      }
+    }
+    if (!needType) return;
+
+    const ploppable = this.findReachablePloppableForNeed(needType, vehicleX, vehicleY);
+    if (!ploppable) return; // No reachable ploppable — silently skip this event.
+
+    const target = NeedsSystem.getNeedTargetPosition(ploppable);
+    const pathToNeed = this.pathfindingSystem.findPath(vehicleX, vehicleY, target.x, target.y, 'pedestrian');
+    if (pathToNeed.length === 0 && !(vehicleX === target.x && vehicleY === target.y)) return;
+
+    const speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
+    // Pass the vehicle's own position as "destination" for the entity constructor, then clear it
+    // so completeNeedFulfillment treats this as a return-to-vehicle trip.
+    const ped = new PedestrianEntity(
+      vehicleId,
+      vehicleX,
+      vehicleY,
+      vehicleX,
+      vehicleY,
+      pathToNeed,
+      speed,
+      0,
+      vehicleName
+    );
+    ped.destinationX = undefined;
+    ped.destinationY = undefined;
+    ped.respawnDuration = undefined;
+    ped.respawnTimer = undefined;
+    ped.isMovieGoerNeedTrip = true;
+
+    const spawnScreenPos = isoToScreen(vehicleX, vehicleY);
+    ped.screenX = spawnScreenPos.x;
+    ped.screenY = spawnScreenPos.y;
+    ped.x = vehicleX;
+    ped.y = vehicleY;
+    ped.currentNeed = needType;
+    ped.needTargetPloppableId = ploppable.id;
+    ped.needTargetX = target.x;
+    ped.needTargetY = target.y;
+    ped.path = pathToNeed;
+    ped.currentPathIndex = 0;
+    ped.actualPathTiles = [{ x: vehicleX, y: vehicleY }];
+    ped.state = 'spawning';
+
+    this.pedestrians.push(ped);
+  }
+
+  /**
    * Update all pedestrians
    */
   update(delta: number, _gridWidth: number, _gridHeight: number, _gridOffsetX: number, _gridOffsetY: number): void {
@@ -482,6 +560,12 @@ export class PedestrianSystem {
       // Handle returning to vehicle
       if (pedestrian.state === 'returning_to_vehicle') {
         this.updatePedestrianMoving(pedestrian, delta, 'vehicle');
+      }
+
+      // Drive-In: movie-goer need trips are one-shot; once back at the car, clean them up so
+      // the next scheduled event can spawn a fresh ped for this vehicle.
+      if (pedestrian.isMovieGoerNeedTrip && pedestrian.state === 'at_vehicle') {
+        pedestriansToRemove.push(pedestrian.id);
       }
     });
     

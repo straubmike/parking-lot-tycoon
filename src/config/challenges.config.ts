@@ -1,5 +1,5 @@
 import { Challenge } from '@/types';
-import { CHALLENGE_ORDER } from '@/managers/ProgressManager';
+import { CHALLENGE_ORDER, isDevChallengeEnabled } from '@/managers/ProgressManager';
 
 /** Respawn durations (pedestrianRespawnMinMs/MaxMs and bands) are in real-time milliseconds. 1 game minute = 1 real second; 8 game hours = 480_000 ms. */
 const DEFAULT_SPAWN_INTERVAL_MS = 3000;
@@ -49,7 +49,7 @@ export const CHALLENGES: Challenge[] = [
     budget: 10000,
     startTimeMinutes: 420,
     winConditions: [],
-    vehicleSpawnIntervalMs: 3000,
+    vehicleSpawnIntervalMs: 6000,
     pedestrianRespawnMinMs: 5000,
     pedestrianRespawnMaxMs: 15000,
   },
@@ -67,7 +67,7 @@ export const CHALLENGES: Challenge[] = [
       { type: 'min_rating', value: 50, description: 'Reach a lot rating of 50' },
       { type: 'min_parking_spots', value: 3, description: 'Place at least 3 parking spots' },
     ],
-    vehicleSpawnIntervalMs: 4000,
+    vehicleSpawnIntervalMs: 8000,
     pedestrianRespawnMinMs: 5000,
     pedestrianRespawnMaxMs: 15000,
     meterHighParkingRateThreshold: 5,
@@ -93,20 +93,20 @@ export const CHALLENGES: Challenge[] = [
       { type: 'min_rating', value: 60, description: 'Reach a lot rating of 60' },
       { type: 'required_ploppables', value: 1, description: 'Place at least 1 Dumpster', ploppableType: 'Dumpster', ploppableCount: 1 },
     ],
-    vehicleSpawnIntervalMs: 32000, // base pass-through (quarter of original for ~24-spot lots)
+    vehicleSpawnIntervalMs: 64000, // base pass-through (half of previous tuning for uniform lower traffic)
     vehicleSpawnSchedule: [
-      { startGameMinutes: 0,    endGameMinutes: 359,  spawnIntervalMs: 48000 }, // 12:00–5:59 AM  sparse night traffic
-      { startGameMinutes: 360,  endGameMinutes: 599,  spawnIntervalMs: 20000 },  // 6:00–9:59 AM   morning commuters pass by
-      { startGameMinutes: 600,  endGameMinutes: 659,  spawnIntervalMs: 16000 },  // 10:00–10:59 AM shop opens, light lunch seekers
-      { startGameMinutes: 660,  endGameMinutes: 719,  spawnIntervalMs: 10000 },  // 11:00–11:59 AM sharp lunch ramp
-      { startGameMinutes: 720,  endGameMinutes: 839,  spawnIntervalMs: 6000 },  // 12:00–1:59 PM  lunch peak
-      { startGameMinutes: 840,  endGameMinutes: 899,  spawnIntervalMs: 12000 },  // 2:00–2:59 PM   sharp falloff
-      { startGameMinutes: 900,  endGameMinutes: 959,  spawnIntervalMs: 20000 },  // 3:00–3:59 PM   lull between rushes
-      { startGameMinutes: 960,  endGameMinutes: 1139, spawnIntervalMs: 6000 },  // 4:00–6:59 PM   dinner peak
-      { startGameMinutes: 1140, endGameMinutes: 1199, spawnIntervalMs: 10000 },  // 7:00–7:59 PM   gradual falloff
-      { startGameMinutes: 1200, endGameMinutes: 1259, spawnIntervalMs: 16000 },  // 8:00–8:59 PM   trailing off
-      { startGameMinutes: 1260, endGameMinutes: 1319, spawnIntervalMs: 24000 }, // 9:00–9:59 PM   last stragglers
-      { startGameMinutes: 1320, endGameMinutes: 1439, spawnIntervalMs: 32000 },  // 10:00–11:59 PM closing traffic
+      { startGameMinutes: 0,    endGameMinutes: 359,  spawnIntervalMs: 96000 }, // 12:00–5:59 AM  sparse night traffic
+      { startGameMinutes: 360,  endGameMinutes: 599,  spawnIntervalMs: 40000 },  // 6:00–9:59 AM   morning commuters pass by
+      { startGameMinutes: 600,  endGameMinutes: 659,  spawnIntervalMs: 32000 },  // 10:00–10:59 AM shop opens, light lunch seekers
+      { startGameMinutes: 660,  endGameMinutes: 719,  spawnIntervalMs: 20000 },  // 11:00–11:59 AM sharp lunch ramp
+      { startGameMinutes: 720,  endGameMinutes: 839,  spawnIntervalMs: 12000 },  // 12:00–1:59 PM  lunch peak
+      { startGameMinutes: 840,  endGameMinutes: 899,  spawnIntervalMs: 24000 },  // 2:00–2:59 PM   sharp falloff
+      { startGameMinutes: 900,  endGameMinutes: 959,  spawnIntervalMs: 40000 },  // 3:00–3:59 PM   lull between rushes
+      { startGameMinutes: 960,  endGameMinutes: 1139, spawnIntervalMs: 12000 },  // 4:00–6:59 PM   dinner peak
+      { startGameMinutes: 1140, endGameMinutes: 1199, spawnIntervalMs: 20000 },  // 7:00–7:59 PM   gradual falloff
+      { startGameMinutes: 1200, endGameMinutes: 1259, spawnIntervalMs: 32000 },  // 8:00–8:59 PM   trailing off
+      { startGameMinutes: 1260, endGameMinutes: 1319, spawnIntervalMs: 48000 }, // 9:00–9:59 PM   last stragglers
+      { startGameMinutes: 1320, endGameMinutes: 1439, spawnIntervalMs: 64000 },  // 10:00–11:59 PM closing traffic
     ],
     potentialParkerChance: 0, // fallback: pass-through only (shop closed hours)
     potentialParkerSchedule: [
@@ -137,19 +137,44 @@ export const CHALLENGES: Challenge[] = [
     id: 'rush-hour-roundabout',
     name: 'Rush Hour Roundabout',
     description: 'Commuters flood the lot every morning and park all day. Capitalize on long stays with smart pricing.',
-    descriptionSubline: 'Playable grid: 12×12',
+    descriptionSubline: 'Playable grid: 13×13',
     maxDay: 5,
-    lotSize: { width: 14, height: 14 },
-    startTimeMinutes: 420,
+    lotSize: { width: 15, height: 15 },
+    startTimeMinutes: 300, // 5:00 AM — player sees the full morning commute ramp
+    initialGridPath: '/rushhour.json',
     budget: 12000,
     winConditions: [
       { type: 'min_rating', value: 70, description: 'Reach a lot rating of 70' },
-      { type: 'min_parking_spots', value: 8, description: 'Place at least 8 parking spots' },
-      { type: 'profit', value: 800, description: 'Earn $800 profit' },
+      { type: 'min_parking_spots', value: 20, description: 'Place at least 20 parking spots' },
+      { type: 'profit', value: 500, description: 'Earn $500 profit (budget $12,500)' },
     ],
-    vehicleSpawnIntervalMs: 2500,
-    pedestrianRespawnMinMs: 6000,
-    pedestrianRespawnMaxMs: 18000,
+    vehicleSpawnIntervalMs: 10000, // middling baseline; overridden by the commute schedule below
+    vehicleSpawnSchedule: [
+      { startGameMinutes: 0,    endGameMinutes: 359,  spawnIntervalMs: 60000 }, // 12:00–5:59 AM  sparse night traffic
+      { startGameMinutes: 360,  endGameMinutes: 419,  spawnIntervalMs: 20000 }, // 6:00–6:59 AM   dawn, first movers
+      { startGameMinutes: 420,  endGameMinutes: 479,  spawnIntervalMs: 8000 },  // 7:00–7:59 AM   commute ramp
+      { startGameMinutes: 480,  endGameMinutes: 539,  spawnIntervalMs: 4000 },  // 8:00–8:59 AM   morning peak
+      { startGameMinutes: 540,  endGameMinutes: 599,  spawnIntervalMs: 8000 },  // 9:00–9:59 AM   late arrivals tapering
+      { startGameMinutes: 600,  endGameMinutes: 1199, spawnIntervalMs: 10000 }, // 10:00 AM–7:59 PM middling midday + evening
+      { startGameMinutes: 1200, endGameMinutes: 1319, spawnIntervalMs: 20000 }, // 8:00–9:59 PM   evening winding down
+      { startGameMinutes: 1320, endGameMinutes: 1439, spawnIntervalMs: 40000 }, // 10:00–11:59 PM quiet late traffic
+    ],
+    potentialParkerChance: 0.05, // fallback outside commute hours: almost nobody new parks here
+    potentialParkerSchedule: [
+      { startGameMinutes: 360, endGameMinutes: 419, chance: 0.2 },  // 6:00–6:59 AM   early-bird commuters
+      { startGameMinutes: 420, endGameMinutes: 479, chance: 0.55 }, // 7:00–7:59 AM   commute ramp
+      { startGameMinutes: 480, endGameMinutes: 539, chance: 0.85 }, // 8:00–8:59 AM   morning peak
+      { startGameMinutes: 540, endGameMinutes: 599, chance: 0.35 }, // 9:00–9:59 AM   stragglers
+    ],
+    pedestrianRespawnMinMs: 450000, // 7.5 game hours — fallback if bands ignored
+    pedestrianRespawnMaxMs: 540000, // 9 game hours
+    pedestrianRespawnBands: [
+      // Commuters: off-screen for a ~1.5-hour window centred on 8 game hours.
+      // Someone who parks at 8 AM will return between 3:30 PM and 5:00 PM.
+      { weight: 0.9, minMs: 450000, maxMs: 540000 },
+      // Occasional short visitor (errand / meeting, not a full workday)
+      { weight: 0.1, minMs: 120000, maxMs: 240000 },
+    ],
     meterHighParkingRateThreshold: 3,
     boothHighParkingRateThreshold: 3,
     meterHighParkingRatePenaltyPerDollar: 10,
@@ -163,24 +188,64 @@ export const CHALLENGES: Challenge[] = [
     id: 'drive-in-disaster',
     name: 'Drive-In Disaster',
     description: 'Movie night brings a rush of parkers on a strict schedule. Design the perfect lot or lose the crowd.',
-    descriptionSubline: 'Playable grid: 14×10',
+    descriptionSubline: 'Playable grid: 18×12',
     maxDay: 5,
-    lotSize: { width: 16, height: 12 },
-    startTimeMinutes: 420,
+    lotSize: { width: 18, height: 14 },
+    startTimeMinutes: 960, // 4:00 PM — player sees both showtime ramps
+    initialGridPath: '/drivein.json',
     budget: 15000,
     winConditions: [
       { type: 'min_rating', value: 75, description: 'Reach a lot rating of 75' },
-      { type: 'required_ploppables', value: 1, description: 'Place at least 1 Vending Machine', ploppableType: 'Vending Machine', ploppableCount: 1 },
+      { type: 'min_parking_spots', value: 30, description: 'Place at least 30 parking spots' },
+      { type: 'required_ploppables', value: 2, description: 'Place at least 2 Lotty Potties', ploppableType: 'Portable Toilet', ploppableCount: 2 },
+      { type: 'required_ploppables', value: 2, description: 'Place at least 2 Lot Pops', ploppableType: 'Vending Machine', ploppableCount: 2 },
+      { type: 'required_ploppables', value: 2, description: 'Place at least 2 Dumpsters', ploppableType: 'Dumpster', ploppableCount: 2 },
     ],
-    vehicleSpawnIntervalMs: 3000,
+    // All parked cars face the top-left so the (unrendered) movie screen sits in front of them.
+    lockedParkingSpotOrientation: 3,
+    // Traffic: quiet during the day, rush windows before each show (dense parker arrivals), and a
+    // thin passerby trickle while movies are playing. Parker chance is ~1 during rushes so nearly
+    // every car in the ramp is a movie-goer.
+    vehicleSpawnIntervalMs: 40000,
     vehicleSpawnSchedule: [
-      { startGameMinutes: 1080, endGameMinutes: 1260, spawnIntervalMs: 2000 }, // 18:00–21:00 evening
+      { startGameMinutes: 0,    endGameMinutes: 1019, spawnIntervalMs: 40000 }, // 12:00 AM–4:59 PM quiet daytime
+      { startGameMinutes: 1020, endGameMinutes: 1079, spawnIntervalMs: 2500 },  // 5:00–5:59 PM    pre-show 1 rush
+      { startGameMinutes: 1080, endGameMinutes: 1199, spawnIntervalMs: 25000 }, // 6:00–7:59 PM    show 1 (thin passerby)
+      { startGameMinutes: 1200, endGameMinutes: 1259, spawnIntervalMs: 2500 },  // 8:00–8:59 PM    pre-show 2 rush
+      { startGameMinutes: 1260, endGameMinutes: 1379, spawnIntervalMs: 25000 }, // 9:00–10:59 PM   show 2 (thin passerby)
+      { startGameMinutes: 1380, endGameMinutes: 1439, spawnIntervalMs: 40000 }, // 11:00–11:59 PM  back to quiet
     ],
-    pedestrianRespawnMinMs: 5000,
-    pedestrianRespawnMaxMs: 15000,
-    needGenerationProbability: 0.7,
-    needTypeDistribution: { trash: 0.1, thirst: 0.2, toilet: 0.7 },
-    driverExitsVehicleProbability: 0.2,
+    // Potential parkers: ZERO during downtime (fallback 0). During rush windows chance is near 1,
+    // so the ratio of parkers to total traffic is ~1 — the ramp IS the rush. Latecomer shoulder
+    // still loses a few to passerby so the lot doesn't feel artificially synchronous.
+    potentialParkerChance: 0,
+    potentialParkerSchedule: [
+      { startGameMinutes: 1020, endGameMinutes: 1049, chance: 0.95 }, // 5:00–5:29 PM   early arrivals for 6 PM show
+      { startGameMinutes: 1050, endGameMinutes: 1079, chance: 1.0 },  // 5:30–5:59 PM   peak arrivals
+      { startGameMinutes: 1080, endGameMinutes: 1094, chance: 0.85 }, // 6:00–6:14 PM   latecomers
+      { startGameMinutes: 1200, endGameMinutes: 1229, chance: 0.95 }, // 8:00–8:29 PM   early arrivals for 9 PM show
+      { startGameMinutes: 1230, endGameMinutes: 1259, chance: 1.0 },  // 8:30–8:59 PM   peak arrivals
+      { startGameMinutes: 1260, endGameMinutes: 1274, chance: 0.85 }, // 9:00–9:14 PM   latecomers
+    ],
+    // Movie-goer parking is ANCHORED to showtime ends rather than a flat per-parker timer. A parker
+    // arriving at 5:00 PM for the 6–8 PM show stays until ~8 PM (3 hours). A parker arriving at
+    // 5:55 PM stays ~2 hours. This guarantees most parkers see the full movie even if they arrive
+    // during the pre-show ramp. parkingDurationMinMs/MaxMs are kept as a safe fallback (unused
+    // when `showtimeEnds` is set).
+    showtimeEnds: [1200, 1380], // 8:00 PM end of show 1; 11:00 PM end of show 2
+    showtimeLeaveVarianceMs: 120000, // up to ~2 game min past the end so cars stagger out
+    parkingDurationMinMs: 120000,
+    parkingDurationMaxMs: 122000,
+    // Drivers never leave their cars on a destination trip. Need trips are fired from the
+    // movie-goer schedule below.
+    driverExitsVehicleProbability: 0,
+    movieGoerMode: true,
+    // Per-vehicle need trip scheduling: VehicleSystem rolls 0/1/2 events per parker and fires them
+    // at random points within the parking window. When an event fires, a ped is spawned with one
+    // of these need types picked by weight (no secondary probability gate), walks to a ploppable,
+    // and returns to the car.
+    needGenerationProbability: 1,
+    needTypeDistribution: { trash: 0.2, thirst: 0.3, toilet: 0.5 },
     meterHighParkingRateThreshold: 0, // any meter rate = penalty (effectively)
     meterHighParkingRatePenaltyPerDollar: 10,
     boothHighParkingRateThreshold: 4,
@@ -204,7 +269,7 @@ export const CHALLENGES: Challenge[] = [
       { type: 'min_parking_spots', value: 15, description: 'Place at least 15 parking spots' },
       { type: 'profit', value: 2000, description: 'Earn $2000 profit' },
     ],
-    vehicleSpawnIntervalMs: 2000,
+    vehicleSpawnIntervalMs: 4000,
     pedestrianRespawnMinMs: 8000,
     pedestrianRespawnMaxMs: 25000,
     meterHighParkingRateThreshold: 0, // any meter = penalty
@@ -224,8 +289,15 @@ export function getChallengeById(id: string): Challenge | undefined {
   return CHALLENGES.find(c => c.id === id);
 }
 
-/** Get challenge config in menu order (excluding dev-mode if not in config). */
+/**
+ * Get challenge config in menu order. Dev Mode is excluded unless the
+ * dev-challenge gate is enabled (see `isDevChallengeEnabled`).
+ */
 export function getChallengesInOrder(): Challenge[] {
   const byId = new Map(CHALLENGES.map(c => [c.id, c]));
-  return CHALLENGE_ORDER.map(id => byId.get(id)).filter((c): c is Challenge => c != null);
+  const devOn = isDevChallengeEnabled();
+  return CHALLENGE_ORDER
+    .filter(id => devOn || id !== 'dev-mode')
+    .map(id => byId.get(id))
+    .filter((c): c is Challenge => c != null);
 }

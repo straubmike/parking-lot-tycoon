@@ -210,6 +210,59 @@ All game systems should:
 - Ensure Vite dev server is running
 - Verify `index.html` references `/src/main.ts` correctly
 
+## Launching the Hosted Game
+
+### Environment variables
+
+All client-visible env vars are prefixed `VITE_`. Copy `.env.example` to `.env.local`
+for local development, or set them in your hosting provider's dashboard for
+production.
+
+| Variable | Purpose |
+|---|---|
+| `VITE_SUPABASE_URL` | Supabase project URL (REST endpoint root). |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key. Safe to expose; RLS + table constraints gate writes. |
+| `VITE_ENABLE_DEV_CHALLENGE` | Set to `true` to show the Dev Mode sandbox in a production-style build. Leave unset/`false` for the public site. |
+
+The committed [.env.production](.env.production) pins `VITE_ENABLE_DEV_CHALLENGE=false`
+so hosted builds never expose the sandbox. `npm run dev` always enables Dev Mode
+regardless of the flag.
+
+### Setting up the Supabase leaderboard
+
+1. Create a Supabase project.
+2. In the **SQL Editor**, paste and run [supabase/schema.sql](supabase/schema.sql). This creates the `scores` table, plausibility CHECK constraints, and Row Level Security policies that let anyone read and submit rows.
+3. In **Project Settings > API**, copy the project URL and anon key into your hosting provider's env settings (or a local `.env.local`).
+
+Cheat prevention is pragmatic: CHECK constraints reject out-of-range values, and
+RLS blocks updates/deletes from browser clients. Add an Edge Function or rate
+limiting later if spam becomes a problem.
+
+### Deploying a static build
+
+The production build is a static bundle in `dist/`, so any static host works.
+
+1. Push the repo to GitHub/GitLab.
+2. Connect it to Cloudflare Pages, Netlify, or Vercel.
+3. Configure the build: **build command** `npm run build`, **publish directory** `dist`.
+4. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the host's env settings.
+5. In the host dashboard, attach a custom domain you purchased from a registrar. HTTPS is automatic on all three hosts.
+
+Supabase's PostgREST endpoint returns permissive CORS headers for anonymous
+clients, so no extra CORS configuration is needed on the Supabase side.
+
+### Balance tuning
+
+Per-challenge difficulty knobs live in [src/config/challenges.config.ts](src/config/challenges.config.ts):
+
+- `maxDay` and `winConditions` for deadlines and objectives
+- `needGenerationProbability` and `needTypeDistribution` for pedestrian needs
+- `vehicleSpawnIntervalMs`, `vehicleSpawnSchedule`, and `potentialParkerChance` / `potentialParkerSchedule` for traffic shape
+- `pedestrianRespawnBands` and related knobs for pedestrian turnover
+
+All of these can be edited directly; no architecture changes are required to
+retune them between playtests.
+
 ## Technologies
 
 - **Phaser 3** - Game framework

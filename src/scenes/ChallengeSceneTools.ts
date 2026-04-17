@@ -38,6 +38,8 @@ export interface GridEditorContext {
   getTime(): Phaser.Time.Clock;
   getAdd(): { graphics(): Phaser.GameObjects.Graphics; sprite(x: number, y: number, texture: string): Phaser.GameObjects.Sprite; container(x: number, y: number): Phaser.GameObjects.Container };
   resizeGrid(newWidth: number, newHeight: number): void;
+  /** Returns a forced Parking Spot orientation (0-3) or null if the player is free to rotate. */
+  getLockedParkingSpotOrientation?(): number | null;
 }
 
 export class GridEditorController {
@@ -980,7 +982,13 @@ export class GridEditorController {
           this.isDemolishMode = false;
           document.getElementById('demolish-button')?.classList.remove('selected');
           this.selectedPloppableType = ploppableName;
-          this.ploppableOrientation = (ploppableName === 'Vending Machine' || ploppableName === 'Dumpster' || ploppableName === 'Portable Toilet' || ploppableName === 'Speed Bump') ? 2 : 0;
+          const lockedParkingOrient = this.ctx.getLockedParkingSpotOrientation?.() ?? null;
+          this.ploppableOrientation =
+            ploppableName === 'Parking Spot' && lockedParkingOrient !== null
+              ? lockedParkingOrient
+              : (ploppableName === 'Vending Machine' || ploppableName === 'Dumpster' || ploppableName === 'Portable Toilet' || ploppableName === 'Speed Bump')
+                ? 2
+                : 0;
           if (this.isPermanentMode) {
             this.isPermanentMode = false;
             const permanentButton = document.getElementById('permanent-button');
@@ -1039,7 +1047,11 @@ export class GridEditorController {
       setPrice(ploppableCost > 0 ? `$${ploppableCost}` : 'Free');
       if (selectionInfo && colorPreview && selectionName && selectionDescription && selectionInstructions) {
         colorPreview.style.display = 'none';
-        selectionName.textContent = this.selectedPloppableType;
+        const selectionDisplayNames: Record<string, string> = {
+          'Portable Toilet': 'Lotty Potty',
+          'Vending Machine': 'Lot Pop',
+        };
+        selectionName.textContent = selectionDisplayNames[this.selectedPloppableType] || this.selectedPloppableType;
         const button = document.querySelector(`.ploppable-button[data-name="${this.selectedPloppableType}"]`);
         let description = button?.getAttribute('data-description') || '';
         let instructions = '';
@@ -1050,7 +1062,11 @@ export class GridEditorController {
           if (rotTypes.includes(this.selectedPloppableType)) instructions = 'Use Q and E keys to rotate orientation.';
           if (this.selectedPloppableType === 'Crosswalk') instructions = 'Requires asphalt. Use Q and E keys to rotate orientation.';
           if (this.selectedPloppableType === 'Security Camera') instructions = 'Can only be placed on cells that already contain a Street Light.';
-          if (this.selectedPloppableType === 'Parking Spot') instructions = 'Can only be placed on dirt, gravel, or asphalt. Use Q and E to rotate.';
+          if (this.selectedPloppableType === 'Parking Spot') {
+            instructions = this.ctx.getLockedParkingSpotOrientation?.() != null
+              ? 'Can only be placed on dirt, gravel, or asphalt. Orientation is locked for this lot.'
+              : 'Can only be placed on dirt, gravel, or asphalt. Use Q and E to rotate.';
+          }
           if (this.selectedPloppableType === 'Parking Meter') instructions = 'Can only be placed on cells that already contain a Parking Spot.';
         }
         selectionDescription.textContent = description;
@@ -1087,6 +1103,7 @@ export class GridEditorController {
     const input = this.ctx.getInput();
     input.keyboard?.on('keydown-Q', () => {
       if (this.selectedPloppableType === 'Parking Spot') {
+        if (this.ctx.getLockedParkingSpotOrientation?.() != null) return;
         const rotationMap = [1, 3, 0, 2];
         this.ploppableOrientation = rotationMap[this.ploppableOrientation];
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
@@ -1103,6 +1120,7 @@ export class GridEditorController {
     });
     input.keyboard?.on('keydown-E', () => {
       if (this.selectedPloppableType === 'Parking Spot') {
+        if (this.ctx.getLockedParkingSpotOrientation?.() != null) return;
         const rotationMap = [2, 0, 3, 1];
         this.ploppableOrientation = rotationMap[this.ploppableOrientation];
         if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);

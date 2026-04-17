@@ -24,6 +24,9 @@ export class VehicleEntity implements Vehicle {
   concreteTileCount?: number;
   sidewalkMessageShown?: boolean;
   spriteVariant?: number;
+  pedestrianSpawned?: boolean;
+  movieGoerMode?: boolean;
+  movieGoerNeedEvents?: number[];
 
   constructor(
     spawnerX: number,

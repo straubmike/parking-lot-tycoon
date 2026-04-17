@@ -64,13 +64,18 @@ export class LeaderboardScene extends Phaser.Scene {
     filterRow.appendChild(select);
     panel.appendChild(filterRow);
 
+    const status = document.createElement('div');
+    status.id = 'leaderboard-status';
+    status.style.cssText = 'color:#888;font-size:12px;margin-bottom:8px;min-height:16px;';
+    panel.appendChild(status);
+
     const listDiv = document.createElement('div');
     listDiv.id = 'leaderboard-list';
-    listDiv.style.cssText = 'width:100%;max-width:600px;margin-bottom:24px;';
+    listDiv.style.cssText = 'width:100%;max-width:720px;margin-bottom:24px;';
     panel.appendChild(listDiv);
 
     const renderList = (challengeIdFilter: string) => {
-      const entries = challengeIdFilter ? leaderboard.getEntries(challengeIdFilter) : leaderboard.getEntries();
+      const entries = leaderboard.getEntries(challengeIdFilter || undefined);
       listDiv.innerHTML = '';
       if (entries.length === 0) {
         const empty = document.createElement('p');
@@ -79,34 +84,23 @@ export class LeaderboardScene extends Phaser.Scene {
         listDiv.appendChild(empty);
         return;
       }
-      const table = document.createElement('table');
-      table.style.cssText = 'width:100%;border-collapse:collapse;font-size:14px;';
-      table.innerHTML = '<thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">Player</th><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">Challenge</th><th style="text-align:right;padding:8px;border-bottom:1px solid #555;">Score</th><th style="text-align:right;padding:8px;border-bottom:1px solid #555;">Profit</th></tr></thead><tbody></tbody>';
-      const tbody = table.querySelector('tbody')!;
-      const cellStyle = 'padding:8px;border-bottom:1px solid #333;';
-      const rightCellStyle = cellStyle + 'text-align:right;';
-      entries.forEach((e, i) => {
-        const row = document.createElement('tr');
-        const cells = [
-          { text: String(i + 1), style: cellStyle },
-          { text: e.playerName, style: cellStyle },
-          { text: getChallengeDisplayName(e.challengeId), style: cellStyle },
-          { text: String(e.score), style: rightCellStyle },
-          { text: `$${e.metrics.profit.toLocaleString()}`, style: rightCellStyle },
-        ];
-        for (const { text, style } of cells) {
-          const td = document.createElement('td');
-          td.style.cssText = style;
-          td.textContent = text;
-          row.appendChild(td);
-        }
-        tbody.appendChild(row);
-      });
-      listDiv.appendChild(table);
+      listDiv.appendChild(buildLeaderboardTable(entries, getChallengeDisplayName));
     };
 
     renderList('');
     select.addEventListener('change', () => renderList(select.value));
+
+    if (leaderboard.isRemoteEnabled()) {
+      status.textContent = 'Loading global scores…';
+      leaderboard.refreshFromRemote().then(() => {
+        status.textContent = '';
+        renderList(select.value);
+      }).catch(() => {
+        status.textContent = 'Showing local scores only (couldn\u2019t reach the server).';
+      });
+    } else {
+      status.textContent = 'Showing local scores (no global leaderboard configured).';
+    }
 
     const backBtn = document.createElement('button');
     backBtn.textContent = 'Back to menu';
@@ -126,4 +120,48 @@ export class LeaderboardScene extends Phaser.Scene {
     document.getElementById('leaderboard-panel')?.remove();
     setGameUIVisibility(true);
   }
+}
+
+/**
+ * Render the top-N table: rank, player, challenge, rating, profit, day.
+ * Shared between the dedicated LeaderboardScene and the main-menu tab.
+ */
+export function buildLeaderboardTable(
+  entries: import('@/systems/LeaderboardSystem').LeaderboardEntry[],
+  getDisplayName: (id: string) => string,
+): HTMLElement {
+  const table = document.createElement('table');
+  table.style.cssText = 'width:100%;border-collapse:collapse;font-size:14px;color:#fff;';
+  const headCellBase = 'padding:8px;border-bottom:1px solid #555;';
+  table.innerHTML =
+    '<thead><tr>' +
+    `<th style="text-align:left;${headCellBase}">#</th>` +
+    `<th style="text-align:left;${headCellBase}">Player</th>` +
+    `<th style="text-align:left;${headCellBase}">Challenge</th>` +
+    `<th style="text-align:right;${headCellBase}">Rating</th>` +
+    `<th style="text-align:right;${headCellBase}">Profit</th>` +
+    `<th style="text-align:right;${headCellBase}">Day</th>` +
+    '</tr></thead><tbody></tbody>';
+  const tbody = table.querySelector('tbody')!;
+  const cellStyle = 'padding:8px;border-bottom:1px solid #333;';
+  const rightCellStyle = cellStyle + 'text-align:right;';
+  entries.forEach((e, i) => {
+    const row = document.createElement('tr');
+    const cells: Array<{ text: string; style: string }> = [
+      { text: String(i + 1), style: cellStyle },
+      { text: e.playerName, style: cellStyle },
+      { text: getDisplayName(e.challengeId), style: cellStyle },
+      { text: String(e.rating), style: rightCellStyle },
+      { text: `$${e.profit.toLocaleString()}`, style: rightCellStyle },
+      { text: String(e.completionDay), style: rightCellStyle },
+    ];
+    for (const { text, style } of cells) {
+      const td = document.createElement('td');
+      td.style.cssText = style;
+      td.textContent = text;
+      row.appendChild(td);
+    }
+    tbody.appendChild(row);
+  });
+  return table;
 }

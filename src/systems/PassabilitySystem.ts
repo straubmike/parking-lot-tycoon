@@ -24,7 +24,7 @@ export class PassabilitySystem {
     'Flower Patch': true, // Flower patches are passable (decorations)
     'Street Light': true, // Street lights are passable
     'Security Camera': true, // Security cameras are passable
-    'Portable Toilet': false, // Portable toilets are impassable (block movement)
+    'Portable Toilet': 'pedestrian-only', // Peds path onto cell for toilet need (despawn on arrival); vehicles cannot pass
     'Bench': 'pedestrian-only', // Benches are passable by pedestrians only
     'Speed Bump': true, // Speed bumps are passable by both
     'Crosswalk': true, // Crosswalks are passable by both

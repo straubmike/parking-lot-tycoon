@@ -47,6 +47,40 @@ export interface Challenge {
   needTypeDistribution?: Partial<Record<'trash' | 'thirst' | 'toilet', number>>;
   /** Optional: probability (0-1) that driver exits vehicle (spawns pedestrian). Default 1. Lower = "stay in car" (e.g. Drive-In). */
   driverExitsVehicleProbability?: number;
+  /** Optional: min parking duration in real-time ms (1 game min = 1 real sec). Overrides VehicleSystem default 5000. */
+  parkingDurationMinMs?: number;
+  /** Optional: max parking duration in real-time ms. Overrides VehicleSystem default 15000. Must be >= parkingDurationMinMs. */
+  parkingDurationMaxMs?: number;
+  /**
+   * Optional: Drive-In "movie-goer" parking style. When true:
+   * - Driver stays in car (spawns no destination-bound pedestrian).
+   * - While parked, 0/1/2 need events are scheduled at random times. Each event spawns a
+   *   pedestrian that walks from the car to a need ploppable and back to the car, then is removed.
+   * - Vehicle leaves when parkingTimer expires regardless of any in-flight need trip.
+   * Typically combined with driverExitsVehicleProbability: 0 and a needTypeDistribution.
+   */
+  movieGoerMode?: boolean;
+  /**
+   * Optional: Drive-In showtime end anchors as game minutes (0-1439, sorted ascending).
+   * When `movieGoerMode` is on and this is set, each parker's parking duration is computed at park
+   * time so the car leaves shortly after the NEXT anchor — i.e. the end of the show they arrived
+   * for. Early arrivals therefore stay through the entire show instead of leaving on a flat
+   * per-parker timer. Example: `[1200, 1380]` = 8:00 PM and 11:00 PM.
+   */
+  showtimeEnds?: number[];
+  /**
+   * Optional: max real-ms variance added past the anchor so cars don't all leave on the same frame.
+   * Default 120000 ms (~2 game min) when movieGoerMode + showtimeEnds are set. Ignored otherwise.
+   */
+  showtimeLeaveVarianceMs?: number;
+  /**
+   * Optional: lock the Parking Spot placement tool to a single edge-missing orientation
+   * (0=west-facing / missing left, 1=north / missing bottom, 2=south / missing top, 3=west / missing right,
+   * following existing parking-spot edge convention). When set, selecting the Parking Spot tool snaps to
+   * this orientation and Q/E rotation is disabled for Parking Spots.
+   * For Drive-In Disaster we lock to 3 so all parked cars face the screen (top-left).
+   */
+  lockedParkingSpotOrientation?: number;
   /**
    * Optional: dollar amount per 15 minutes above which parkers get a rating penalty.
    * Fallback when meter/booth-specific values are omitted. Default 5.
@@ -147,6 +181,10 @@ export interface Vehicle {
   pedestrianSpawned?: boolean;
   /** Sprite variant index (0-based). Determines which car art set is used (e.g. 0 = car1, 1 = car2). Assigned at spawn, stays constant for the vehicle's lifetime. */
   spriteVariant?: number;
+  /** Drive-In: when true, this vehicle is a movie-goer (driver stays in car; periodic need trips). */
+  movieGoerMode?: boolean;
+  /** Drive-In: remaining time (ms) until each scheduled need event fires. Sorted ascending; element 0 fires next. */
+  movieGoerNeedEvents?: number[];
 }
 
 export interface SpawnerDespawnerPair {
@@ -186,6 +224,8 @@ export interface Pedestrian {
   rating?: number; // Personal rating contribution
   unfulfilledNeeds?: ('trash' | 'thirst' | 'toilet')[]; // List of needs that couldn't be satisfied
   actualPathTiles?: { x: number; y: number }[]; // Actual tiles walked on (for concrete percentage calculation)
+  /** Drive-In movie-goer one-shot need trip: when true, this ped is removed when it returns to the vehicle (instead of triggering the vehicle to leave). */
+  isMovieGoerNeedTrip?: boolean;
 }
 
 /**

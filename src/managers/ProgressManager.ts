@@ -1,8 +1,8 @@
 /**
  * ProgressManager - Persists player progress (completed challenges, unlock state)
  *
- * Saves to localStorage. Unlock rule: Dev Mode only in dev build;
- * Learning Lot always unlocked; completing challenge N unlocks N+1.
+ * Saves to localStorage. Unlock rule: Dev Mode only when the dev-challenge gate is
+ * enabled; Learning Lot always unlocked; completing challenge N unlocks N+1.
  */
 
 const STORAGE_KEY = 'parking-lot-tycoon-progress';
@@ -18,7 +18,17 @@ export const CHALLENGE_ORDER: string[] = [
 ];
 
 export function isDevBuild(): boolean {
-  return (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true;
+  return import.meta.env.DEV === true;
+}
+
+/**
+ * Whether the Dev Mode challenge is available in this build.
+ * True in dev server (`npm run dev`) or when VITE_ENABLE_DEV_CHALLENGE=true.
+ * Hosted production builds should leave the flag unset so the card is hidden
+ * and the sandbox can't be launched from the menu.
+ */
+export function isDevChallengeEnabled(): boolean {
+  return isDevBuild() || import.meta.env.VITE_ENABLE_DEV_CHALLENGE === 'true';
 }
 
 export interface ProgressData {
@@ -68,13 +78,14 @@ export function isChallengeCompleted(challengeId: string): boolean {
 
 /**
  * Whether the challenge is unlocked (player can select it).
- * Dev Mode: only in dev build. Learning Lot: always. Others: previous challenge completed.
+ * Dev Mode: only when the dev-challenge gate is on. Learning Lot: always.
+ * Others: previous challenge completed.
  */
 export function isChallengeUnlocked(challengeId: string): boolean {
   const data = loadRaw();
   const idx = CHALLENGE_ORDER.indexOf(challengeId);
   if (idx < 0) return false;
-  if (challengeId === 'dev-mode') return isDevBuild();
+  if (challengeId === 'dev-mode') return isDevChallengeEnabled();
   if (challengeId === 'learning-lot') return true;
   const previousId = CHALLENGE_ORDER[idx - 1];
   return data.completedChallengeIds.includes(previousId);

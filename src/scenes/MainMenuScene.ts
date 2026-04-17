@@ -3,10 +3,12 @@ import {
   CHALLENGE_ORDER,
   isChallengeUnlocked,
   isChallengeCompleted,
+  isDevChallengeEnabled,
 } from '@/managers/ProgressManager';
 import { setGameUIVisibility } from '@/utils/menuVisibility';
 import { getChallengeById, getChallengesInOrder } from '@/config/challenges.config';
 import { LeaderboardSystem } from '@/systems/LeaderboardSystem';
+import { buildLeaderboardTable } from '@/scenes/LeaderboardScene';
 import { Challenge } from '@/types';
 import aboutText from '../../about.txt?raw';
 
@@ -122,8 +124,7 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private buildChallengeCard(challenge: Challenge): HTMLElement {
-    // Dev Mode is always unlocked so it can be used for testing in any environment
-    const unlocked = challenge.id === 'dev-mode' || isChallengeUnlocked(challenge.id);
+    const unlocked = isChallengeUnlocked(challenge.id);
     const completed = isChallengeCompleted(challenge.id);
 
     const card = document.createElement('button');
@@ -215,11 +216,15 @@ export class MainMenuScene extends Phaser.Scene {
     }
     wrap.appendChild(select);
 
+    const status = document.createElement('div');
+    status.style.cssText = 'color:#888;font-size:12px;margin-bottom:8px;min-height:16px;';
+    wrap.appendChild(status);
+
     const listDiv = document.createElement('div');
     listDiv.id = 'menu-leaderboard-list';
 
     const renderList = (challengeIdFilter: string) => {
-      const entries = challengeIdFilter ? leaderboard.getEntries(challengeIdFilter) : leaderboard.getEntries();
+      const entries = leaderboard.getEntries(challengeIdFilter || undefined);
       listDiv.innerHTML = '';
       if (entries.length === 0) {
         const empty = document.createElement('p');
@@ -228,35 +233,22 @@ export class MainMenuScene extends Phaser.Scene {
         listDiv.appendChild(empty);
         return;
       }
-      const table = document.createElement('table');
-      table.style.cssText = 'width:100%;border-collapse:collapse;font-size:14px;color:#fff;';
-      table.innerHTML = '<thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">#</th><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">Player</th><th style="text-align:left;padding:8px;border-bottom:1px solid #555;">Challenge</th><th style="text-align:right;padding:8px;border-bottom:1px solid #555;">Score</th><th style="text-align:right;padding:8px;border-bottom:1px solid #555;">Profit</th></tr></thead><tbody></tbody>';
-      const tbody = table.querySelector('tbody')!;
-      const cellStyle = 'padding:8px;border-bottom:1px solid #333;';
-      const rightCellStyle = cellStyle + 'text-align:right;';
-      entries.forEach((e, i) => {
-        const row = document.createElement('tr');
-        const cells = [
-          { text: String(i + 1), style: cellStyle },
-          { text: e.playerName, style: cellStyle },
-          { text: getChallengeDisplayName(e.challengeId), style: cellStyle },
-          { text: String(e.score), style: rightCellStyle },
-          { text: `$${e.metrics.profit.toLocaleString()}`, style: rightCellStyle },
-        ];
-        for (const { text, style } of cells) {
-          const td = document.createElement('td');
-          td.style.cssText = style;
-          td.textContent = text;
-          row.appendChild(td);
-        }
-        tbody.appendChild(row);
-      });
-      listDiv.appendChild(table);
+      listDiv.appendChild(buildLeaderboardTable(entries, getChallengeDisplayName));
     };
 
     renderList('');
     select.addEventListener('change', () => renderList(select.value));
     wrap.appendChild(listDiv);
+
+    if (leaderboard.isRemoteEnabled()) {
+      status.textContent = 'Loading global scores\u2026';
+      leaderboard.refreshFromRemote().then(() => {
+        status.textContent = '';
+        renderList(select.value);
+      }).catch(() => {
+        status.textContent = 'Showing local scores only (couldn\u2019t reach the server).';
+      });
+    }
 
     return wrap;
   }
@@ -284,11 +276,12 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private startChallenge(challengeId: string): void {
+    const isDevMode = challengeId === 'dev-mode';
+    if (isDevMode && !isDevChallengeEnabled()) return;
     setGameUIVisibility(true);
     // Remove menu overlay immediately so the game canvas is visible (don't rely on shutdown order)
     document.getElementById('main-menu-overlay')?.remove();
     this.menuOverlay = null;
-    const isDevMode = challengeId === 'dev-mode';
     if (isDevMode) {
       this.scene.start('DevModeScene', { challengeId: 'dev-mode', isDevMode: true, gridWidth: 10, gridHeight: 10 });
     } else {

@@ -23,7 +23,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
   private initialBudget: number = 0;
   private challengeSystem: ChallengeSystem | null = null;
   private gameOverState: 'playing' | 'won' | 'lost' = 'playing';
-  private lastWinMetrics: { profit: number; rating: number; currentDay: number } | null = null;
+  private lastWinMetrics: { profit: number; rating: number; completionDay: number } | null = null;
   private challengeBehavior: ChallengeBehavior | null = null;
   private tools!: GridEditorController;
 
@@ -70,6 +70,27 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
       }
       if (challenge.driverExitsVehicleProbability != null) {
         this.vehicleSystem.setDriverExitsVehicleProbability(challenge.driverExitsVehicleProbability);
+      }
+      if (challenge.parkingDurationMinMs != null && challenge.parkingDurationMaxMs != null) {
+        this.vehicleSystem.setParkingDurationMs(challenge.parkingDurationMinMs, challenge.parkingDurationMaxMs);
+      }
+      if (challenge.movieGoerMode) {
+        this.vehicleSystem.setMovieGoerMode(true);
+        if (challenge.showtimeEnds && challenge.showtimeEnds.length > 0) {
+          const ends = [...challenge.showtimeEnds].sort((a, b) => a - b);
+          const variance = challenge.showtimeLeaveVarianceMs ?? 120000;
+          this.vehicleSystem.setMovieGoerParkingDurationFn(() => {
+            const t = TimeSystem.getInstance().getTotalMinutes();
+            // Pick the next upcoming show end; falls back to the earliest end the following day
+            // (t + 1440) so late-night parkers (rare w/ current schedules) still get a sane duration.
+            let nextEndMinutes = ends.find(e => e > t);
+            if (nextEndMinutes === undefined) nextEndMinutes = ends[0] + 1440;
+            const gameMinutesUntilEnd = nextEndMinutes - t;
+            // 1 game min = 1 real sec, so ms = gameMinutes * 1000.
+            const baseMs = Math.max(0, gameMinutesUntilEnd) * 1000;
+            return baseMs + Math.random() * variance;
+          });
+        }
       }
     } else {
       this.challengeSystem = null;
@@ -202,7 +223,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
         this.lastWinMetrics = {
           profit: metrics.profit ?? 0,
           rating: metrics.rating ?? 0,
-          currentDay: metrics.currentDay ?? 0,
+          completionDay: displayedDay,
         };
         this.showWinOverlay();
       } else if (displayedDay >= maxDay) {
@@ -331,15 +352,15 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
   private submitAndGoToLeaderboard(): void {
     if (this.lastWinMetrics) {
       const name = window.prompt('Enter your name for the leaderboard:', 'Player')?.trim() || 'Player';
-      LeaderboardSystem.getInstance().addEntry({
-        playerName: name,
+      // Fire-and-forget: LeaderboardSystem stores locally immediately, then pushes
+      // to Supabase when configured. The LeaderboardScene refreshes from remote on
+      // open, so we don't need to await the POST here.
+      void LeaderboardSystem.getInstance().submit({
+        playerName: name.slice(0, 24),
         challengeId: this.challengeId,
-        score: this.lastWinMetrics.rating,
-        metrics: {
-          profit: this.lastWinMetrics.profit,
-          rating: this.lastWinMetrics.rating,
-          time: this.lastWinMetrics.currentDay,
-        },
+        profit: this.lastWinMetrics.profit,
+        rating: this.lastWinMetrics.rating,
+        completionDay: this.lastWinMetrics.completionDay,
       });
     }
     this.scene.start('LeaderboardScene');
@@ -393,6 +414,12 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
 
   getPedestrianSystem(): import('@/systems/PedestrianSystem').PedestrianSystem {
     return this.pedestrianSystem;
+  }
+
+  getLockedParkingSpotOrientation(): number | null {
+    const challenge = getChallengeById(this.challengeId);
+    const v = challenge?.lockedParkingSpotOrientation;
+    return v == null ? null : v;
   }
 
   getIsDevMode(): boolean {
