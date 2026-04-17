@@ -70,9 +70,25 @@ export interface Challenge {
   showtimeEnds?: number[];
   /**
    * Optional: max real-ms variance added past the anchor so cars don't all leave on the same frame.
-   * Default 120000 ms (~2 game min) when movieGoerMode + showtimeEnds are set. Ignored otherwise.
+   * 1 game minute = 1 real second = 1000 ms, so 2000 ms = 2 game-min of stagger.
+   * Default 2000 ms when movieGoerMode + showtimeEnds are set. Ignored otherwise.
    */
   showtimeLeaveVarianceMs?: number;
+  /**
+   * Optional: when true, an unfulfilled TOILET need on a parker causes them to abandon their spot
+   * and drive to the exit. The parker's score is also zeroed (same treatment as "couldn't find a
+   * spot"). Currently used by Drive-In Disaster, where movie-goers commit to a ~2 hour stay and
+   * bailing out of the show is a strictly worse outcome than, e.g., finishing a vending-machine run.
+   */
+  unfulfilledToiletEndsStay?: boolean;
+  /**
+   * Optional: when true, potential parkers who can't reserve a spot (lot full) are silently
+   * redirected elsewhere — no rating hit, no "no spot available" message. Rate-refusal cases
+   * (meter/booth too expensive) still apply their normal penalty + message.
+   * Used by Airport Arrivals where huge daily volume + long stays will legitimately overflow the
+   * lot, and we want the narrative to be "overflow travelers just used a different lot."
+   */
+  suppressNoSpotPenalty?: boolean;
   /**
    * Optional: lock the Parking Spot placement tool to a single edge-missing orientation
    * (0=west-facing / missing left, 1=north / missing bottom, 2=south / missing top, 3=west / missing right,

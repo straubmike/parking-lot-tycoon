@@ -453,7 +453,7 @@ export class PloppableManager {
             const config = PLOPPABLE_SPRITE_CONFIG['Booth Barrier'];
             const sprite = scene.add.sprite(centerX + edgeOffX, centerY + edgeOffY + BARRIER_OFFSET_Y, barrierKey);
             sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-            sprite.setDepth(3);
+            sprite.setDepth(3 + sprite.y * 0.0001);
             sprite.setFlipX(flipX);
             const baseScale = TILE_WIDTH * 0.5;
             const scaleMult = config?.scaleMultiplier ?? 1;
@@ -466,7 +466,7 @@ export class PloppableManager {
             fontSize: '24px',
           });
           targetLabel.setOrigin(0.5, 0.5);
-          targetLabel.setDepth(3);
+          targetLabel.setDepth(3 + targetLabel.y * 0.0001);
           return targetLabel;
         } else {
           // BOOTH subType - render booth emoji (handled in Type B section below)
@@ -507,7 +507,9 @@ export class PloppableManager {
         const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
         const sprite = scene.add.sprite(centerX, posY, spriteKey);
         sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 0.5);
-        const depth = (ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk') ? 1.5 : 3;
+        const depth = (ploppable.type === 'Speed Bump' || ploppable.type === 'Crosswalk')
+          ? 1.5
+          : 3 + sprite.y * 0.0001;
         sprite.setDepth(depth);
         let flip = ploppable.spriteFlip ?? false;
         if (ploppable.type === 'Speed Bump') {
@@ -527,7 +529,7 @@ export class PloppableManager {
         fontSize: '24px',
       });
       label.setOrigin(0.5, 0.5);
-      label.setDepth(3);
+      label.setDepth(3 + label.y * 0.0001);
       return label;
     }
     
@@ -566,7 +568,7 @@ export class PloppableManager {
         const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
         const sprite = scene.add.sprite(posX, posY, spriteKey);
         sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-        sprite.setDepth(3);
+        sprite.setDepth(3 + sprite.y * 0.0001);
         sprite.setFlipX(flipX);
         const baseScale = TILE_WIDTH * 0.5;
         const scaleMult = config?.scaleMultiplier ?? 1;
@@ -576,7 +578,7 @@ export class PloppableManager {
           const camKey = PLOPPABLE_SPRITES['Security Camera'];
           if (camKey) {
             const container = scene.add.container(posX, posY);
-            container.setDepth(3);
+            container.setDepth(3 + container.y * 0.0001);
             sprite.setPosition(0, 0);
             container.add(sprite);
 
@@ -609,7 +611,7 @@ export class PloppableManager {
         fontSize: '18px',
       });
       label.setOrigin(0.5, 1.0);
-      label.setDepth(3);
+      label.setDepth(3 + label.y * 0.0001);
       return label;
     } else {
       // Type B: Central position with rotation indicator (arrow showing facing direction)
@@ -630,7 +632,7 @@ export class PloppableManager {
             const BOOTH_OFFSET_Y = -3;
             const sprite = scene.add.sprite(centerX, centerY + TILE_HEIGHT / 2 + BOOTH_OFFSET_Y, boothSpriteKey);
             sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-            sprite.setDepth(3);
+            sprite.setDepth(3 + sprite.y * 0.0001);
             sprite.setFlipX(flipX);
             const baseScale = TILE_WIDTH * 0.5;
             const scaleMult = config?.scaleMultiplier ?? 1;
@@ -642,7 +644,7 @@ export class PloppableManager {
             fontSize: '24px',
           });
           boothLabel.setOrigin(0.5, 0.5);
-          boothLabel.setDepth(3);
+          boothLabel.setDepth(3 + boothLabel.y * 0.0001);
           return boothLabel;
         }
         
@@ -662,7 +664,7 @@ export class PloppableManager {
           const offsetX = orientation === 2 ? -VENDING_ORIGIN_OFFSET_X : VENDING_ORIGIN_OFFSET_X;
           const sprite = scene.add.sprite(centerX + offsetX, centerY + VENDING_ORIGIN_OFFSET_Y, spriteKey);
           sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-          sprite.setDepth(3);
+          sprite.setDepth(3 + sprite.y * 0.0001);
           sprite.setFlipX(flipX);
           const baseScale = TILE_WIDTH * 0.5;
           const scaleMult = config?.scaleMultiplier ?? 1;
@@ -680,7 +682,7 @@ export class PloppableManager {
           const offsetX = orientation === 2 ? -DUMPSTER_OFFSET_X : DUMPSTER_OFFSET_X;
           const sprite = scene.add.sprite(centerX + offsetX, centerY + DUMPSTER_OFFSET_Y, dumpsterKey);
           sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-          sprite.setDepth(3);
+          sprite.setDepth(3 + sprite.y * 0.0001);
           sprite.setFlipX(flipX);
           const baseScale = TILE_WIDTH * 0.5;
           const scaleMult = config?.scaleMultiplier ?? 1;
@@ -698,7 +700,7 @@ export class PloppableManager {
           const offsetX = orientation === 2 ? -POTTY_OFFSET_X : POTTY_OFFSET_X;
           const sprite = scene.add.sprite(centerX + offsetX, centerY + POTTY_OFFSET_Y, pottyKey);
           sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-          sprite.setDepth(3);
+          sprite.setDepth(3 + sprite.y * 0.0001);
           sprite.setFlipX(flipX);
           const baseScale = TILE_WIDTH * 0.5;
           const scaleMult = config?.scaleMultiplier ?? 1;
@@ -711,7 +713,7 @@ export class PloppableManager {
           fontSize: '24px',
         });
         label.setOrigin(0.5, 0.5);
-        label.setDepth(3);
+        label.setDepth(3 + label.y * 0.0001);
         
         // Draw orientation arrow pointing in the facing direction
         // Skip arrow for Speed Bump and Crosswalk

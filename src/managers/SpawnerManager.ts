@@ -79,24 +79,27 @@ export class SpawnerManager {
   }
 
   /**
-   * Remove a vehicle spawner-despawner pair
+   * Remove a vehicle spawner-despawner pair.
+   * The clicked cell (clickedX, clickedY) can be either the spawner or the despawner end — the pair
+   * is looked up via findPairByCell so either endpoint demolishes the whole pair.
    */
   static removeVehicleSpawnerPair(
-    spawnerX: number,
-    spawnerY: number,
+    clickedX: number,
+    clickedY: number,
     gridManager: GridManager,
     vehicleSystem: VehicleSystem
   ): void {
-    // Find the pair
-    const pair = vehicleSystem.findPairByCell(spawnerX, spawnerY);
+    const pair = vehicleSystem.findPairByCell(clickedX, clickedY);
     if (!pair) return;
-    
-    // Remove from grid - use undefined to properly delete properties
+
     gridManager.setCellData(pair.spawnerX, pair.spawnerY, { vehicleSpawner: undefined as any });
     gridManager.setCellData(pair.despawnerX, pair.despawnerY, { vehicleDespawner: undefined as any });
-    
-    // Remove from vehicle system
-    vehicleSystem.removeSpawnerDespawnerPair(spawnerX, spawnerY);
+
+    // Pass the pair's SPAWNER coords (not the clicked cell) so the registry filter matches.
+    // Previously this forwarded the clicked cell — when the user clicked the despawner end, the
+    // cellData flags were cleared but the pair entry survived, leaving an invisible spawner that
+    // still produced traffic. See VehicleSystem.removeSpawnerDespawnerPair.
+    vehicleSystem.removeSpawnerDespawnerPair(pair.spawnerX, pair.spawnerY);
   }
 
   /**
@@ -139,6 +142,20 @@ export class SpawnerManager {
 
     if (explicitPairs?.length) {
       for (const [spawnerX, spawnerY, despawnerX, despawnerY] of explicitPairs) {
+        // Sanity check: a pair entry should match cellData flags on both endpoints. If the map
+        // was hand-edited or predates the demolish-path fix, the pair and the cells can diverge —
+        // which manifests as cars spawning from a cell with no 🚗 indicator. Warn loudly but keep
+        // the pair (traffic is the "canonical" intent when loading a saved map).
+        const spawnerCell = gridManager.getCellData(spawnerX, spawnerY);
+        const despawnerCell = gridManager.getCellData(despawnerX, despawnerY);
+        if (!spawnerCell?.vehicleSpawner || !despawnerCell?.vehicleDespawner) {
+          console.warn(
+            '[SpawnerManager] Loaded map has a vehicleSpawnerPairs entry without matching cellData flags:',
+            { spawner: [spawnerX, spawnerY], despawner: [despawnerX, despawnerY],
+              spawnerFlagPresent: !!spawnerCell?.vehicleSpawner,
+              despawnerFlagPresent: !!despawnerCell?.vehicleDespawner }
+          );
+        }
         vehicleSystem.addSpawnerDespawnerPair({
           spawnerX,
           spawnerY,

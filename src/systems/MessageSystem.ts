@@ -334,7 +334,7 @@ export class MessageSystem {
   static toiletUnfulfilled(parkerName: string): void {
     MessageSystem.getInstance().addParkerReaction(
       parkerName,
-      "I gotta rush home to use the toilet! No porta-potty here!",
+      "I gotta rush home to use the toilet! No lotty potty here!",
       '😰'
     );
   }

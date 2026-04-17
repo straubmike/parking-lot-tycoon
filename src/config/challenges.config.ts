@@ -203,6 +203,8 @@ export const CHALLENGES: Challenge[] = [
     ],
     // All parked cars face the top-left so the (unrendered) movie screen sits in front of them.
     lockedParkingSpotOrientation: 3,
+    // Movie-goers who can't find a toilet bail on the show — drive to the exit with rating = 0.
+    unfulfilledToiletEndsStay: true,
     // Traffic: quiet during the day, rush windows before each show (dense parker arrivals), and a
     // thin passerby trickle while movies are playing. Parker chance is ~1 during rushes so nearly
     // every car in the ramp is a movie-goer.
@@ -233,7 +235,7 @@ export const CHALLENGES: Challenge[] = [
     // during the pre-show ramp. parkingDurationMinMs/MaxMs are kept as a safe fallback (unused
     // when `showtimeEnds` is set).
     showtimeEnds: [1200, 1380], // 8:00 PM end of show 1; 11:00 PM end of show 2
-    showtimeLeaveVarianceMs: 120000, // up to ~2 game min past the end so cars stagger out
+    showtimeLeaveVarianceMs: 2000, // up to 2 game-min past the end so cars stagger out (1 game-min = 1 real-sec = 1000 ms)
     parkingDurationMinMs: 120000,
     parkingDurationMaxMs: 122000,
     // Drivers never leave their cars on a destination trip. Need trips are fired from the
@@ -258,20 +260,49 @@ export const CHALLENGES: Challenge[] = [
   {
     id: 'airport-arrivals',
     name: 'Airport Arrivals',
-    description: 'Travelers need long-term parking at high volume. Meters won\'t cut it here -- think big.',
-    descriptionSubline: 'Playable grid: 16×12',
+    description: 'The airport wants to repurpose a culvert and travelers need long-term parking at high volume. Meters won\'t cut it here -- think big.',
+    descriptionSubline: 'Playable grid: 24×15',
     maxDay: 7,
-    lotSize: { width: 18, height: 14 },
+    lotSize: { width: 24, height: 18 },
     startTimeMinutes: 420,
-    budget: 25000,
+    initialGridPath: '/airport.json',
+    budget: 30000,
     winConditions: [
       { type: 'min_rating', value: 80, description: 'Reach a lot rating of 80' },
-      { type: 'min_parking_spots', value: 15, description: 'Place at least 15 parking spots' },
-      { type: 'profit', value: 2000, description: 'Earn $2000 profit' },
+      { type: 'min_parking_spots', value: 50, description: 'Place at least 50 parking spots' },
+      { type: 'profit', value: 5000, description: 'Earn $5000 profit (budget $30,000)' },
     ],
+    // Traffic shape resembles RHR (night quiet, morning ramp, midday plateau, evening taper) but
+    // elevated throughout — airports don't really sleep. Baseline is overridden by the schedule.
     vehicleSpawnIntervalMs: 4000,
-    pedestrianRespawnMinMs: 8000,
-    pedestrianRespawnMaxMs: 25000,
+    vehicleSpawnSchedule: [
+      { startGameMinutes: 0,    endGameMinutes: 299,  spawnIntervalMs: 12000 }, // 12:00–4:59 AM   red-eye trickle
+      { startGameMinutes: 300,  endGameMinutes: 419,  spawnIntervalMs: 8000 },  // 5:00–6:59 AM   pre-dawn ramp
+      { startGameMinutes: 420,  endGameMinutes: 539,  spawnIntervalMs: 5000 },  // 7:00–8:59 AM   morning travel rush
+      { startGameMinutes: 540,  endGameMinutes: 959,  spawnIntervalMs: 4000 },  // 9:00 AM–3:59 PM midday plateau (busy)
+      { startGameMinutes: 960,  endGameMinutes: 1199, spawnIntervalMs: 3500 },  // 4:00–7:59 PM   evening peak
+      { startGameMinutes: 1200, endGameMinutes: 1319, spawnIntervalMs: 5000 },  // 8:00–9:59 PM   evening winding down
+      { startGameMinutes: 1320, endGameMinutes: 1439, spawnIntervalMs: 8000 },  // 10:00–11:59 PM late-night tail
+    ],
+    // Potential-parker ratio is fairly uniform day-to-day — travelers park around the clock. The
+    // gentle curve peaks in the evening and dips a bit during the red-eye window.
+    potentialParkerChance: 0.6, // fallback if no schedule window matches
+    potentialParkerSchedule: [
+      { startGameMinutes: 0,    endGameMinutes: 299,  chance: 0.35 }, // 12:00–4:59 AM  red-eye slow
+      { startGameMinutes: 300,  endGameMinutes: 419,  chance: 0.5 },  // 5:00–6:59 AM   pre-dawn
+      { startGameMinutes: 420,  endGameMinutes: 659,  chance: 0.7 },  // 7:00–10:59 AM  morning rush
+      { startGameMinutes: 660,  endGameMinutes: 959,  chance: 0.65 }, // 11:00 AM–3:59 PM midday plateau
+      { startGameMinutes: 960,  endGameMinutes: 1199, chance: 0.75 }, // 4:00–7:59 PM   evening peak
+      { startGameMinutes: 1200, endGameMinutes: 1319, chance: 0.6 },  // 8:00–9:59 PM   late evening
+      { startGameMinutes: 1320, endGameMinutes: 1439, chance: 0.4 },  // 10:00–11:59 PM night winding down
+    ],
+    // Travelers leave their cars behind for actual trips: 1 to 5 in-game days off-screen.
+    // At 1 game-min = 1 real-sec, 1 day = 1,440,000 ms and 5 days = 7,200,000 ms.
+    pedestrianRespawnMinMs: 1440000,
+    pedestrianRespawnMaxMs: 7200000,
+    // Lot fills up with long-stay travelers; overflow parkers silently divert to another lot
+    // instead of tanking the rating and flooding the message panel.
+    suppressNoSpotPenalty: true,
     meterHighParkingRateThreshold: 0, // any meter = penalty
     boothHighParkingRateThreshold: 1,
     meterHighParkingRatePenaltyPerDollar: 10,

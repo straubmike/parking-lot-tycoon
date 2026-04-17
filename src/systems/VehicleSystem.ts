@@ -27,6 +27,7 @@ export class VehicleSystem {
   private maxParkingDuration: number = 15000; // Maximum parking time (real ms)
   private movieGoerModeEnabled: boolean = false;
   private movieGoerDurationFn: (() => number | null) | null = null;
+  private suppressNoSpotPenalty: boolean = false; // Airport Arrivals: full lot = silent redirect
   private getCellData: (x: number, y: number) => CellData | undefined;
   private getParkingSpots: () => Ploppable[];
   private pedestrianSystem?: PedestrianSystem;
@@ -140,6 +141,15 @@ export class VehicleSystem {
   }
 
   /**
+   * Airport Arrivals: when enabled, a potential parker finding a full lot (no reservable spot) is
+   * silently redirected — no rating-system registration, no "no spot available" message. Rate-based
+   * refusals (meter/booth too expensive) still produce their normal penalty + message.
+   */
+  setSuppressNoSpotPenalty(enabled: boolean): void {
+    this.suppressNoSpotPenalty = enabled;
+  }
+
+  /**
    * When set alongside movie-goer mode, this function is consulted on each parker-park to derive a
    * per-vehicle parking duration in real ms (e.g. anchor to the next showtime end). Return null to
    * fall back to the min/max range. Ignored when movie-goer mode is off.
@@ -168,14 +178,20 @@ export class VehicleSystem {
   }
 
   /**
-   * Remove a spawner-despawner pair (when despawner is removed)
+   * Remove a spawner-despawner pair. The (cellX, cellY) argument can be either the spawner OR the
+   * despawner endpoint — any pair that uses the cell as either end is removed. This keeps the
+   * registry consistent with cellData even if a caller passes the "wrong" endpoint.
    */
-  removeSpawnerDespawnerPair(spawnerX: number, spawnerY: number): void {
-    this.spawnerDespawnerPairs = this.spawnerDespawnerPairs.filter(
-      p => !(p.spawnerX === spawnerX && p.spawnerY === spawnerY)
+  removeSpawnerDespawnerPair(cellX: number, cellY: number): void {
+    const toRemove = this.spawnerDespawnerPairs.filter(
+      p => (p.spawnerX === cellX && p.spawnerY === cellY) ||
+           (p.despawnerX === cellX && p.despawnerY === cellY)
     );
-    const key = `${spawnerX},${spawnerY}`;
-    this.spawnTimers.delete(key);
+    if (toRemove.length === 0) return;
+    this.spawnerDespawnerPairs = this.spawnerDespawnerPairs.filter(p => !toRemove.includes(p));
+    for (const p of toRemove) {
+      this.spawnTimers.delete(`${p.spawnerX},${p.spawnerY}`);
+    }
   }
 
   /**
@@ -392,27 +408,31 @@ export class VehicleSystem {
       if (reservedSpot !== null) {
         // Found a spot - register with initial score of 70
         GameSystems.rating.registerParker(vehicle.id, 70);
-      } else {
-        // No spot available or refused due to rate - register with initial score of 0
+      } else if (refusalSpotType) {
+        // Refused due to rate — register with 0 score and show the refusal message.
         GameSystems.rating.registerParker(vehicle.id, 0);
         if (vehicle.name) {
-          if (refusalSpotType) {
-            const config = getParkingRateConfig();
-            const msg =
-              refusalSpotType === 'meter_and_booth'
-                ? config.meterAndBoothRefusalMessage
-                : refusalSpotType === 'meter' && config.meterRefusalMessage
-                  ? config.meterRefusalMessage
-                  : refusalSpotType === 'booth' && config.boothRefusalMessage
-                    ? config.boothRefusalMessage
-                    : config.refusalMessage;
-            const emoji = refusalSpotType === 'meter_and_booth' ? '😤' : '';
-            MessageSystem.getInstance().addParkerReaction(vehicle.name, msg, emoji);
-          } else {
-            MessageSystem.noSpotAvailable(vehicle.name);
-          }
+          const config = getParkingRateConfig();
+          const msg =
+            refusalSpotType === 'meter_and_booth'
+              ? config.meterAndBoothRefusalMessage
+              : refusalSpotType === 'meter' && config.meterRefusalMessage
+                ? config.meterRefusalMessage
+                : refusalSpotType === 'booth' && config.boothRefusalMessage
+                  ? config.boothRefusalMessage
+                  : config.refusalMessage;
+          const emoji = refusalSpotType === 'meter_and_booth' ? '😤' : '';
+          MessageSystem.getInstance().addParkerReaction(vehicle.name, msg, emoji);
+        }
+      } else if (!this.suppressNoSpotPenalty) {
+        // Lot full — normal challenges register a 0-score parker and surface the "no spot" message.
+        GameSystems.rating.registerParker(vehicle.id, 0);
+        if (vehicle.name) {
+          MessageSystem.noSpotAvailable(vehicle.name);
         }
       }
+      // Airport Arrivals (suppressNoSpotPenalty): lot-full parkers silently divert elsewhere —
+      // no rating hit, no message. They still drive through the lot and out the despawner.
     }
   }
 
@@ -687,6 +707,30 @@ export class VehicleSystem {
     vehicle.state = 'leaving';
     vehicle.reservedSpotX = undefined;
     vehicle.reservedSpotY = undefined;
+  }
+
+  /**
+   * Drive-In Disaster: force a currently-parked parker to abandon their spot and drive out.
+   * Zeroes their parker rating contribution (treated the same as "couldn't find a spot") and
+   * clears any scheduled movie-goer need events. No-op if the vehicle isn't found or isn't parking.
+   */
+  forceParkerEarlyExit(vehicleId: string): void {
+    const vehicle = this.vehicles.find(v => v.id === vehicleId);
+    if (!vehicle) return;
+    if (vehicle.state !== 'parking') return;
+
+    // Zero the parker's running score (same treatment as "no spot available").
+    const current = GameSystems.rating.getParkerScore(vehicleId);
+    if (current !== undefined && current !== 0) {
+      GameSystems.rating.updateParkerScore(vehicleId, -current);
+    }
+
+    // Drop any remaining scheduled need events so we don't spawn a ped into a leaving car.
+    if (vehicle.movieGoerNeedEvents) {
+      vehicle.movieGoerNeedEvents = [];
+    }
+
+    this.startVehicleLeaving(vehicle);
   }
 
   /**

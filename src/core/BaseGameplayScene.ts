@@ -49,6 +49,9 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected vehicleGraphics!: Phaser.GameObjects.Graphics;
   protected pedestrianGraphics!: Phaser.GameObjects.Graphics;
 
+  /** One Graphics per fence edge so each segment has its own depth (screen-Y sorted). */
+  protected fenceGraphicsByKey: Map<string, Phaser.GameObjects.Graphics> = new Map();
+
   /** Pool of vehicle sprites (car1u/car1d); size should be >= max concurrent vehicles. */
   protected vehicleSpritePool: Phaser.GameObjects.Sprite[] = [];
   private static readonly VEHICLE_POOL_SIZE = 64;
@@ -60,6 +63,11 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
 
   /** When false, vehicle/pedestrian spawner emojis and permanent "P" labels are not drawn (challenge mode). */
   protected showDevOnlyCellLabels: boolean = true;
+
+  /** When true, draw magenta/orange/green destination markers for pedestrians (Dev Mode only). */
+  protected showPedestrianTargetMarkers: boolean = false;
+
+  private statsUiAbort: AbortController | null = null;
 
   constructor(config: string | Phaser.Types.Scenes.SettingsConfig, gridWidth: number, gridHeight?: number) {
     super(config);
@@ -106,6 +114,15 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     
     // Scene-specific setup (to be implemented by subclasses)
     this.setupScene();
+  }
+
+  shutdown(): void {
+    this.statsUiAbort?.abort();
+    this.statsUiAbort = null;
+    for (const g of this.fenceGraphicsByKey.values()) {
+      g.destroy();
+    }
+    this.fenceGraphicsByKey.clear();
   }
 
   /**
@@ -329,6 +346,12 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       this.pedestrianSystem,
       (DEBUG_PATH_LANE_CHECK || DEBUG_LOG_VEHICLE_PATHS_AND_LANES) ? onVehiclePathFound : undefined
     );
+
+    // Let PedestrianSystem ask VehicleSystem to end a parker's stay (used by the Drive-In Disaster
+    // "unfulfilled toilet → bail" path). Wired here to avoid a circular ped↔vehicle dependency.
+    this.pedestrianSystem.setOnParkerEarlyExit((vehicleId: string) => {
+      this.vehicleSystem.forceParkerEarlyExit(vehicleId);
+    });
   }
 
   /**
@@ -343,14 +366,18 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    * Setup game stats UI interactions (mouseover for rating expansion, speed buttons)
    */
   protected setupGameStatsUI(): void {
+    this.statsUiAbort?.abort();
+    this.statsUiAbort = new AbortController();
+    const signal = this.statsUiAbort.signal;
+
     const gameStatsEl = document.getElementById('game-stats');
     if (gameStatsEl) {
       gameStatsEl.addEventListener('mouseenter', () => {
         gameStatsEl.classList.add('expanded');
-      });
+      }, { signal });
       gameStatsEl.addEventListener('mouseleave', () => {
         gameStatsEl.classList.remove('expanded');
-      });
+      }, { signal });
     }
 
     const pauseBtn = document.getElementById('speed-pause');
@@ -363,36 +390,36 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
     pauseBtn?.addEventListener('click', () => {
       GameSystems.time.setPaused(true);
       updateSpeedButtonState();
-    });
+    }, { signal });
     speed1xBtn?.addEventListener('click', () => {
       GameSystems.time.setPaused(false);
       GameSystems.time.setSpeedMultiplier(1);
       updateSpeedButtonState();
-    });
+    }, { signal });
     speed2xBtn?.addEventListener('click', () => {
       GameSystems.time.setPaused(false);
       GameSystems.time.setSpeedMultiplier(2);
       updateSpeedButtonState();
-    });
+    }, { signal });
     speed4xBtn?.addEventListener('click', () => {
       GameSystems.time.setPaused(false);
       GameSystems.time.setSpeedMultiplier(4);
       updateSpeedButtonState();
-    });
+    }, { signal });
 
     document.getElementById('day-plus')?.addEventListener('click', () => {
       GameSystems.time.setCurrentDay(GameSystems.time.getCurrentDay() + 1);
-    });
+    }, { signal });
     document.getElementById('day-minus')?.addEventListener('click', () => {
       const day = GameSystems.time.getCurrentDay();
       if (day > 0) GameSystems.time.setCurrentDay(day - 1);
-    });
+    }, { signal });
     document.getElementById('hour-plus')?.addEventListener('click', () => {
       GameSystems.time.addHours(1);
-    });
+    }, { signal });
     document.getElementById('hour-minus')?.addEventListener('click', () => {
       GameSystems.time.addHours(-1);
-    });
+    }, { signal });
 
     this.updateSpeedButtonState();
   }
@@ -553,6 +580,29 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       this.gridOffsetX,
       this.gridOffsetY
     );
+
+    const activeKeys = GridRenderer.drawFences(
+      this.gridManager,
+      (coordKey, depth) => {
+        let g = this.fenceGraphicsByKey.get(coordKey);
+        if (!g) {
+          g = this.add.graphics();
+          this.fenceGraphicsByKey.set(coordKey, g);
+        }
+        g.setDepth(depth);
+        return g;
+      },
+      this.gridOffsetX,
+      this.gridOffsetY
+    );
+
+    // Reap fence graphics whose edges no longer exist (demolish, redraw after edit).
+    for (const [key, g] of this.fenceGraphicsByKey) {
+      if (!activeKeys.has(key)) {
+        g.destroy();
+        this.fenceGraphicsByKey.delete(key);
+      }
+    }
   }
 
   /**
@@ -691,7 +741,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       pedestrians,
       this.pedestrianGraphics,
       this.gridOffsetX,
-      this.gridOffsetY
+      this.gridOffsetY,
+      this.showPedestrianTargetMarkers
     );
   }
 

@@ -185,7 +185,8 @@ export class EntityRenderer {
     pedestrians: PedestrianEntity[],
     graphics: Phaser.GameObjects.Graphics,
     gridOffsetX: number,
-    gridOffsetY: number
+    gridOffsetY: number,
+    showTargetMarkers: boolean = false
   ): void {
     graphics.clear();
     
@@ -213,7 +214,8 @@ export class EntityRenderer {
       graphics.fillStyle(0xffff00, 1); // Yellow dot
       graphics.fillCircle(screenX, screenY, 3); // 3 pixel radius
       
-      // Draw a larger circle at the destination cell (cell center)
+      // Draw a larger circle at the destination cell (cell center) — Dev Mode debug only
+      if (!showTargetMarkers) return;
       // Show destination when going to destination, show vehicle when returning, show need target when fulfilling needs
       if ((pedestrian.state === 'going_to_need' || pedestrian.state === 'fulfilling_need') && 
           pedestrian.needTargetX !== undefined && pedestrian.needTargetY !== undefined) {

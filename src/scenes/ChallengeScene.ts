@@ -26,6 +26,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
   private lastWinMetrics: { profit: number; rating: number; completionDay: number } | null = null;
   private challengeBehavior: ChallengeBehavior | null = null;
   private tools!: GridEditorController;
+  private backMenuUiAbort: AbortController | null = null;
 
   constructor() {
     super({ key: 'ChallengeScene' }, 10, 10); // gridWidth/height can be overridden by scene data
@@ -38,8 +39,16 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
     super.create();
   }
 
+  shutdown(): void {
+    this.tools?.dispose();
+    this.backMenuUiAbort?.abort();
+    this.backMenuUiAbort = null;
+    super.shutdown();
+  }
+
   protected setupScene(): void {
     this.showDevOnlyCellLabels = this.isDevMode;
+    this.showPedestrianTargetMarkers = this.challengeId === 'dev-mode' || this.isDevMode;
     const challenge = getChallengeById(this.challengeId);
     const budget = challenge?.budget ?? 10000;
     this.initialBudget = budget;
@@ -74,11 +83,17 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
       if (challenge.parkingDurationMinMs != null && challenge.parkingDurationMaxMs != null) {
         this.vehicleSystem.setParkingDurationMs(challenge.parkingDurationMinMs, challenge.parkingDurationMaxMs);
       }
+      if (challenge.unfulfilledToiletEndsStay) {
+        this.pedestrianSystem.setUnfulfilledToiletEndsStay(true);
+      }
+      if (challenge.suppressNoSpotPenalty) {
+        this.vehicleSystem.setSuppressNoSpotPenalty(true);
+      }
       if (challenge.movieGoerMode) {
         this.vehicleSystem.setMovieGoerMode(true);
         if (challenge.showtimeEnds && challenge.showtimeEnds.length > 0) {
           const ends = [...challenge.showtimeEnds].sort((a, b) => a - b);
-          const variance = challenge.showtimeLeaveVarianceMs ?? 120000;
+          const variance = challenge.showtimeLeaveVarianceMs ?? 2000;
           this.vehicleSystem.setMovieGoerParkingDurationFn(() => {
             const t = TimeSystem.getInstance().getTotalMinutes();
             // Pick the next upcoming show end; falls back to the earliest end the following day
@@ -182,11 +197,15 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
       });
     }
 
-    this.time.delayedCall(100, () => {
-      document.getElementById('back-to-menu-button')?.addEventListener('click', () => {
+    this.backMenuUiAbort?.abort();
+    this.backMenuUiAbort = new AbortController();
+    document.getElementById('back-to-menu-button')?.addEventListener(
+      'click',
+      () => {
         this.scene.start('MainMenuScene');
-      });
-    });
+      },
+      { signal: this.backMenuUiAbort.signal }
+    );
   }
 
   update(time: number, delta: number): void {
@@ -194,7 +213,7 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
     if (this.challengeBehavior?.isActive()) {
       this.challengeBehavior.update(scaledDelta);
     }
-    this.tools.updatePointer(this.input.activePointer);
+    this.tools?.updatePointer(this.input.activePointer);
     if (this.gameOverState !== 'playing') {
       super.update(time, delta);
       return;

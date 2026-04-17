@@ -72,24 +72,60 @@ export class GridEditorController {
   private showSafetyVisualization = false;
   private visualizationGraphics: Phaser.GameObjects.Graphics | null = null;
   private ghostSprite: Phaser.GameObjects.GameObject | null = null;
+  /** DOM listeners for tools UI; aborted in dispose() so scene restarts do not stack handlers. */
+  private domAbort: AbortController | null = null;
 
   constructor(context: GridEditorContext) {
     this.ctx = context;
   }
 
   init(): void {
+    this.domAbort = new AbortController();
+    const domSignal = this.domAbort.signal;
     this.setupCamera();
-    this.setupRateInputHandler();
-    this.setupColorButtons();
-    this.setupDemolishButton();
-    this.setupVehicleSpawnerButton();
-    this.setupPedestrianSpawnerButton();
-    this.setupPermanentButton();
-    this.setupAppealVisualizationButton();
-    this.setupSafetyVisualizationButton();
-    this.setupExportImportButtons();
-    this.setupGridResizeControls();
+    this.setupRateInputHandler(domSignal);
+    this.setupColorButtons(domSignal);
+    this.setupDemolishButton(domSignal);
+    this.setupVehicleSpawnerButton(domSignal);
+    this.setupPedestrianSpawnerButton(domSignal);
+    this.setupPermanentButton(domSignal);
+    this.setupAppealVisualizationButton(domSignal);
+    this.setupSafetyVisualizationButton(domSignal);
+    this.setupExportImportButtons(domSignal);
+    this.setupGridResizeControls(domSignal);
     this.setupKeyboardControls();
+  }
+
+  /**
+   * Tear down input + DOM subscriptions when leaving ChallengeScene. Prevents duplicate listeners
+   * on shared HTML buttons after menu ↔ challenge cycles.
+   */
+  dispose(): void {
+    this.domAbort?.abort();
+    this.domAbort = null;
+    const input = this.ctx.getInput();
+    input.off('pointerdown', this.onEditorPointerDown);
+    input.off('pointerup', this.onEditorPointerUp);
+    input.off('pointermove', this.onEditorPointerMove);
+    input.off('wheel', this.onEditorWheel);
+    const kb = input.keyboard;
+    if (kb) {
+      kb.off('keydown-Q', this.onKeyQ);
+      kb.off('keydown-E', this.onKeyE);
+    }
+    this.clearHighlight();
+    if (this.visualizationGraphics) {
+      this.visualizationGraphics.destroy();
+      this.visualizationGraphics = null;
+    }
+    this.destroyGhostSprite();
+  }
+
+  private scheduleDomSetup(signal: AbortSignal, fn: () => void): void {
+    this.ctx.getTime().delayedCall(100, () => {
+      if (signal.aborted) return;
+      fn();
+    });
   }
 
   updatePointer(pointer: Phaser.Input.Pointer): void {
@@ -160,57 +196,73 @@ export class GridEditorController {
   }
 
   private setupCamera(): void {
-    const camera = this.ctx.getCamera();
     const input = this.ctx.getInput();
-    input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown()) {
-        this.isDragging = true;
-        this.dragStartX = pointer.x;
-        this.dragStartY = pointer.y;
-        this.cameraStartX = camera.scrollX;
-        this.cameraStartY = camera.scrollY;
-      } else if (pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode || this.isDemolishMode)) {
-        this.updateHoverHighlight(pointer);
-        this.isPainting = true;
-        this.lastPaintedCell = null;
-        this.lastPaintedEdgeKey = null;
-        if (this.isLineMode && !this.isDemolishMode && this.hoveredEdge) {
-          this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
-        } else {
-          const cell = this.getCellAtPointer(pointer);
-          if (cell) this.paintCell(cell.x, cell.y);
-        }
-      }
-    });
-    input.on('pointerup', () => {
-      this.isDragging = false;
-      this.isPainting = false;
+    input.on('pointerdown', this.onEditorPointerDown);
+    input.on('pointerup', this.onEditorPointerUp);
+    input.on('pointermove', this.onEditorPointerMove);
+    input.on('wheel', this.onEditorWheel);
+  }
+
+  private readonly onEditorPointerDown = (pointer: Phaser.Input.Pointer): void => {
+    const camera = this.ctx.getCamera();
+    if (pointer.rightButtonDown()) {
+      this.isDragging = true;
+      this.dragStartX = pointer.x;
+      this.dragStartY = pointer.y;
+      this.cameraStartX = camera.scrollX;
+      this.cameraStartY = camera.scrollY;
+    } else if (pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode || this.isDemolishMode)) {
+      this.updateHoverHighlight(pointer);
+      this.isPainting = true;
       this.lastPaintedCell = null;
       this.lastPaintedEdgeKey = null;
-    });
-    input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (this.isDragging && pointer.rightButtonDown()) {
-        const deltaX = pointer.x - this.dragStartX;
-        const deltaY = pointer.y - this.dragStartY;
-        camera.setScroll(this.cameraStartX - deltaX, this.cameraStartY - deltaY);
-      } else if (this.isPainting && pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode || this.isDemolishMode)) {
-        if (this.isLineMode && !this.isDemolishMode && this.hoveredEdge) {
-          this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
-        } else {
-          const cell = this.getCellAtPointer(pointer);
-          if (cell) this.paintCell(cell.x, cell.y);
-        }
-        this.updateHoverHighlight(pointer);
+      if (this.isLineMode && !this.isDemolishMode && this.hoveredEdge) {
+        this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
       } else {
-        this.updateHoverHighlight(pointer);
+        const cell = this.getCellAtPointer(pointer);
+        if (cell) this.paintCell(cell.x, cell.y);
       }
-    });
-    input.on('wheel', (_p: Phaser.Input.Pointer, _g: Phaser.GameObjects.GameObject[], _dx: number, deltaY: number, _dz: number) => {
-      const currentZoom = camera.zoom;
-      const zoomDelta = deltaY > 0 ? -this.zoomStep : this.zoomStep;
-      camera.setZoom(Phaser.Math.Clamp(currentZoom + zoomDelta, this.minZoom, this.maxZoom));
-    });
-  }
+    }
+  };
+
+  private readonly onEditorPointerUp = (): void => {
+    this.isDragging = false;
+    this.isPainting = false;
+    this.lastPaintedCell = null;
+    this.lastPaintedEdgeKey = null;
+  };
+
+  private readonly onEditorPointerMove = (pointer: Phaser.Input.Pointer): void => {
+    const camera = this.ctx.getCamera();
+    if (this.isDragging && pointer.rightButtonDown()) {
+      const deltaX = pointer.x - this.dragStartX;
+      const deltaY = pointer.y - this.dragStartY;
+      camera.setScroll(this.cameraStartX - deltaX, this.cameraStartY - deltaY);
+    } else if (this.isPainting && pointer.leftButtonDown() && (this.selectedColor !== null || this.isPermanentMode || this.selectedPloppableType !== null || this.isVehicleSpawnerMode || this.isDemolishMode)) {
+      if (this.isLineMode && !this.isDemolishMode && this.hoveredEdge) {
+        this.paintCell(this.hoveredEdge.cellX, this.hoveredEdge.cellY);
+      } else {
+        const cell = this.getCellAtPointer(pointer);
+        if (cell) this.paintCell(cell.x, cell.y);
+      }
+      this.updateHoverHighlight(pointer);
+    } else {
+      this.updateHoverHighlight(pointer);
+    }
+  };
+
+  private readonly onEditorWheel = (
+    _p: Phaser.Input.Pointer,
+    _g: Phaser.GameObjects.GameObject[],
+    _dx: number,
+    deltaY: number,
+    _dz: number
+  ): void => {
+    const camera = this.ctx.getCamera();
+    const currentZoom = camera.zoom;
+    const zoomDelta = deltaY > 0 ? -this.zoomStep : this.zoomStep;
+    camera.setZoom(Phaser.Math.Clamp(currentZoom + zoomDelta, this.minZoom, this.maxZoom));
+  };
 
   private getCellAtPointer(pointer: Phaser.Input.Pointer): { x: number; y: number } | null {
     return GridInteractionHandler.getCellAtPointer(
@@ -377,7 +429,11 @@ export class GridEditorController {
         }
       }
     } else if (this.isLineMode && edge !== undefined) {
-      GridInteractionHandler.drawEdgeHighlight(gridX, gridY, edge, g, ox, oy);
+      if (this.selectedColorName === 'Fence') {
+        GridRenderer.drawChainLinkFenceOnEdge(g, gridX, gridY, edge, ox, oy, { ghost: true });
+      } else {
+        GridInteractionHandler.drawEdgeHighlight(gridX, gridY, edge, g, ox, oy);
+      }
     } else {
       GridInteractionHandler.drawBasicHighlight(gridX, gridY, g, ox, oy);
     }
@@ -887,8 +943,8 @@ export class GridEditorController {
     if (safetyButton) safetyButton.classList.remove('selected');
   }
 
-  private setupRateInputHandler(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupRateInputHandler(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const parkingTimer = ParkingTimerSystem.getInstance();
       const meterInput = document.getElementById('meter-rate-input') as HTMLInputElement;
       const boothInput = document.getElementById('booth-rate-input') as HTMLInputElement;
@@ -897,20 +953,20 @@ export class GridEditorController {
           const rate = Math.max(1, Math.floor(parseFloat(meterInput.value) || 1));
           meterInput.value = rate.toString();
           parkingTimer.setMeterParkingRate(rate);
-        });
+        }, { signal });
       }
       if (boothInput) {
         boothInput.addEventListener('change', () => {
           const rate = Math.max(1, Math.floor(parseFloat(boothInput.value) || 1));
           boothInput.value = rate.toString();
           parkingTimer.setBoothParkingRate(rate);
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupColorButtons(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupColorButtons(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const colorButtons = document.querySelectorAll('.color-button');
       const ploppableButtons = document.querySelectorAll('.ploppable-button');
       const clearAndUpdate = () => {
@@ -957,7 +1013,7 @@ export class GridEditorController {
           this.clearVisualizationModes();
           this.clearHighlight();
           this.updateSelectionInfo();
-        });
+        }, { signal });
       });
       ploppableButtons.forEach((button) => {
         button.addEventListener('click', () => {
@@ -999,7 +1055,7 @@ export class GridEditorController {
           }
           this.clearHighlight();
           this.updateSelectionInfo();
-        });
+        }, { signal });
       });
     });
   }
@@ -1088,8 +1144,13 @@ export class GridEditorController {
       if (this.isLineMode) setPrice(getLineCost(this.selectedColorName || '') > 0 ? `$${getLineCost(this.selectedColorName || '')} per edge` : 'Free');
       else if (!surfaceType) setPrice('Free');
       else setPrice(`$${getSurfaceCost(surfaceType)} per tile`);
-      colorPreview.style.display = 'block';
-      colorPreview.style.backgroundColor = '#' + this.selectedColor.toString(16).padStart(6, '0');
+      // Fence is rendered as a chain-link mesh, not a flat color; hide the red swatch preview.
+      if (this.selectedColorName === 'Fence') {
+        colorPreview.style.display = 'none';
+      } else {
+        colorPreview.style.display = 'block';
+        colorPreview.style.backgroundColor = '#' + this.selectedColor.toString(16).padStart(6, '0');
+      }
       selectionName.textContent = this.selectedColorName || 'Unknown';
       selectionDescription.textContent = this.selectedColorDescription || '';
       selectionInfo.style.display = 'block';
@@ -1100,42 +1161,46 @@ export class GridEditorController {
   }
 
   private setupKeyboardControls(): void {
-    const input = this.ctx.getInput();
-    input.keyboard?.on('keydown-Q', () => {
-      if (this.selectedPloppableType === 'Parking Spot') {
-        if (this.ctx.getLockedParkingSpotOrientation?.() != null) return;
-        const rotationMap = [1, 3, 0, 2];
-        this.ploppableOrientation = rotationMap[this.ploppableOrientation];
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
-        this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Street Light', 'Bench'].includes(this.selectedPloppableType || '')) {
-        this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (this.selectedPloppableType === 'Crosswalk') {
-        this.ploppableOrientation = this.ploppableOrientation === 0 ? 1 : 0;
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      }
-    });
-    input.keyboard?.on('keydown-E', () => {
-      if (this.selectedPloppableType === 'Parking Spot') {
-        if (this.ctx.getLockedParkingSpotOrientation?.() != null) return;
-        const rotationMap = [2, 0, 3, 1];
-        this.ploppableOrientation = rotationMap[this.ploppableOrientation];
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
-        this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (['Trash Can', 'Street Light', 'Bench', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
-        this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      } else if (this.selectedPloppableType === 'Crosswalk') {
-        this.ploppableOrientation = this.ploppableOrientation === 0 ? 1 : 0;
-        if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
-      }
-    });
+    const kb = this.ctx.getInput().keyboard;
+    kb?.on('keydown-Q', this.onKeyQ);
+    kb?.on('keydown-E', this.onKeyE);
   }
+
+  private readonly onKeyQ = (): void => {
+    if (this.selectedPloppableType === 'Parking Spot') {
+      if (this.ctx.getLockedParkingSpotOrientation?.() != null) return;
+      const rotationMap = [1, 3, 0, 2];
+      this.ploppableOrientation = rotationMap[this.ploppableOrientation];
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
+      this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    } else if (['Trash Can', 'Street Light', 'Bench'].includes(this.selectedPloppableType || '')) {
+      this.ploppableOrientation = (this.ploppableOrientation + 3) % 4;
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    } else if (this.selectedPloppableType === 'Crosswalk') {
+      this.ploppableOrientation = this.ploppableOrientation === 0 ? 1 : 0;
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    }
+  };
+
+  private readonly onKeyE = (): void => {
+    if (this.selectedPloppableType === 'Parking Spot') {
+      if (this.ctx.getLockedParkingSpotOrientation?.() != null) return;
+      const rotationMap = [2, 0, 3, 1];
+      this.ploppableOrientation = rotationMap[this.ploppableOrientation];
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    } else if (this.selectedPloppableType === 'Vending Machine' || this.selectedPloppableType === 'Dumpster' || this.selectedPloppableType === 'Portable Toilet' || this.selectedPloppableType === 'Speed Bump') {
+      this.ploppableOrientation = this.ploppableOrientation === 2 ? 3 : 2;
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    } else if (['Trash Can', 'Street Light', 'Bench', 'Parking Booth'].includes(this.selectedPloppableType || '')) {
+      this.ploppableOrientation = (this.ploppableOrientation + 1) % 4;
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    } else if (this.selectedPloppableType === 'Crosswalk') {
+      this.ploppableOrientation = this.ploppableOrientation === 0 ? 1 : 0;
+      if (this.hoveredCell) this.drawHighlight(this.hoveredCell.x, this.hoveredCell.y);
+    }
+  };
 
   private exportGrid(): void {
     const gridManager = this.ctx.getGridManager();
@@ -1181,8 +1246,8 @@ export class GridEditorController {
     reader.readAsText(file);
   }
 
-  private setupDemolishButton(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupDemolishButton(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const demolishButton = document.getElementById('demolish-button');
       if (demolishButton) {
         demolishButton.addEventListener('click', () => {
@@ -1201,13 +1266,13 @@ export class GridEditorController {
           }
           this.clearHighlight();
           this.updateSelectionInfo();
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupVehicleSpawnerButton(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupVehicleSpawnerButton(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const vehicleButton = document.getElementById('vehicle-spawner-button');
       if (vehicleButton && this.ctx.getIsDevMode()) {
         vehicleButton.addEventListener('click', () => {
@@ -1225,13 +1290,13 @@ export class GridEditorController {
           }
           this.clearHighlight();
           this.updateSelectionInfo();
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupPedestrianSpawnerButton(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupPedestrianSpawnerButton(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const pedestrianButton = document.getElementById('pedestrian-spawner-button');
       if (pedestrianButton && this.ctx.getIsDevMode()) {
         pedestrianButton.addEventListener('click', () => {
@@ -1252,13 +1317,13 @@ export class GridEditorController {
           }
           this.clearHighlight();
           this.updateSelectionInfo();
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupPermanentButton(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupPermanentButton(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const permanentButton = document.getElementById('permanent-button');
       if (permanentButton && this.ctx.getIsDevMode()) {
         permanentButton.addEventListener('click', () => {
@@ -1269,13 +1334,13 @@ export class GridEditorController {
           this.selectedPloppableType = null;
           this.clearHighlight();
           this.updateSelectionInfo();
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupAppealVisualizationButton(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupAppealVisualizationButton(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const appealButton = document.getElementById('appeal-visualization-button');
       if (appealButton) {
         appealButton.addEventListener('click', () => {
@@ -1286,13 +1351,13 @@ export class GridEditorController {
             appealButton.classList.add('selected');
           } else appealButton.classList.remove('selected');
           this.ctx.redrawGrid();
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupSafetyVisualizationButton(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupSafetyVisualizationButton(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const safetyButton = document.getElementById('safety-visualization-button');
       if (safetyButton) {
         safetyButton.addEventListener('click', () => {
@@ -1303,29 +1368,29 @@ export class GridEditorController {
             safetyButton.classList.add('selected');
           } else safetyButton.classList.remove('selected');
           this.ctx.redrawGrid();
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupExportImportButtons(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupExportImportButtons(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const exportButton = document.getElementById('export-button');
       const importButton = document.getElementById('import-button');
       const importInput = document.getElementById('import-input') as HTMLInputElement;
-      if (exportButton) exportButton.addEventListener('click', () => this.exportGrid());
+      if (exportButton) exportButton.addEventListener('click', () => this.exportGrid(), { signal });
       if (importButton && importInput) {
-        importButton.addEventListener('click', () => importInput.click());
+        importButton.addEventListener('click', () => importInput.click(), { signal });
         importInput.addEventListener('change', (e) => {
           const file = (e.target as HTMLInputElement).files?.[0];
           if (file) this.importGrid(file);
-        });
+        }, { signal });
       }
     });
   }
 
-  private setupGridResizeControls(): void {
-    this.ctx.getTime().delayedCall(100, () => {
+  private setupGridResizeControls(signal: AbortSignal): void {
+    this.scheduleDomSetup(signal, () => {
       const resizeButton = document.getElementById('resize-grid-button');
       const gridSizeXInput = document.getElementById('grid-size-x') as HTMLInputElement;
       const gridSizeYInput = document.getElementById('grid-size-y') as HTMLInputElement;
@@ -1350,7 +1415,7 @@ export class GridEditorController {
           }
           if (gridSizeXInput) gridSizeXInput.value = this.ctx.getGridWidth().toString();
           if (gridSizeYInput) gridSizeYInput.value = this.ctx.getGridHeight().toString();
-        });
+        }, { signal });
       }
     });
   }

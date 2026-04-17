@@ -23,6 +23,8 @@ export class PedestrianSystem {
   private gridManager: GridManager;
   private needGenerationProbability: number; // Probability (0-1) that a pedestrian will have a need
   private needTypeDistribution: Record<'trash' | 'thirst' | 'toilet', number>; // Distribution weights for each need type (must sum to 1.0)
+  private unfulfilledToiletEndsStay: boolean = false; // Drive-In Disaster: unfulfilled toilet → parker bails
+  private onParkerEarlyExit: ((vehicleId: string) => void) | null = null; // Wired to VehicleSystem.forceParkerEarlyExit
 
   constructor(
     gridWidth: number,
@@ -360,6 +362,35 @@ export class PedestrianSystem {
   }
 
   /**
+   * Drive-In: report an unfulfilled movie-goer need — message + -10 rating hit on the parker.
+   * Mirrors the standard unfulfilled-need behavior from `setupNeedForPedestrian`, but without
+   * needing a persistent pedestrian to carry the list until vehicle despawn.
+   */
+  private reportMovieGoerUnfulfilledNeed(
+    vehicleId: string,
+    needType: 'trash' | 'thirst' | 'toilet',
+    vehicleName?: string
+  ): void {
+    if (vehicleName) {
+      if (needType === 'thirst') {
+        MessageSystem.thirstUnfulfilled(vehicleName);
+      } else if (needType === 'toilet') {
+        MessageSystem.toiletUnfulfilled(vehicleName);
+      } else if (needType === 'trash') {
+        MessageSystem.trashUnfulfilled(vehicleName);
+      }
+    }
+    // Drive-In Disaster: an unfulfilled TOILET need is catastrophic — the parker bails on the show.
+    // The early-exit callback zeroes their parker score (matching "couldn't find a spot"), so we
+    // skip the usual −10 delta to avoid double-counting. Other need types keep the normal penalty.
+    if (needType === 'toilet' && this.unfulfilledToiletEndsStay && this.onParkerEarlyExit) {
+      this.onParkerEarlyExit(vehicleId);
+      return;
+    }
+    GameSystems.rating.updateParkerScore(vehicleId, -10);
+  }
+
+  /**
    * Drive-In: spawn a one-shot need-trip pedestrian for a movie-goer who's still parked.
    * The ped has no de/respawner destination — they walk from the car to a need ploppable and back
    * to the car. When they arrive (state === 'at_vehicle') they're automatically removed in update().
@@ -386,11 +417,22 @@ export class PedestrianSystem {
     if (!needType) return;
 
     const ploppable = this.findReachablePloppableForNeed(needType, vehicleX, vehicleY);
-    if (!ploppable) return; // No reachable ploppable — silently skip this event.
+    if (!ploppable) {
+      // No reachable ploppable — same outcome as an unfulfilled need in the regular flow:
+      // show the message and apply a -10 rating hit to this parker. We apply it directly to the
+      // vehicle's running parker score because there's no persistent ped to hold the unfulfilled
+      // list until vehicle despawn (movie-goer need-trip peds are one-shot).
+      this.reportMovieGoerUnfulfilledNeed(vehicleId, needType, vehicleName);
+      return;
+    }
 
     const target = NeedsSystem.getNeedTargetPosition(ploppable);
     const pathToNeed = this.pathfindingSystem.findPath(vehicleX, vehicleY, target.x, target.y, 'pedestrian');
-    if (pathToNeed.length === 0 && !(vehicleX === target.x && vehicleY === target.y)) return;
+    if (pathToNeed.length === 0 && !(vehicleX === target.x && vehicleY === target.y)) {
+      // Ploppable exists but no walkable path from the car — still counts as unfulfilled.
+      this.reportMovieGoerUnfulfilledNeed(vehicleId, needType, vehicleName);
+      return;
+    }
 
     const speed = this.minSpeed + Math.random() * (this.maxSpeed - this.minSpeed);
     // Pass the vehicle's own position as "destination" for the entity constructor, then clear it
@@ -917,6 +959,23 @@ export class PedestrianSystem {
    */
   setNeedGenerationProbability(probability: number): void {
     this.needGenerationProbability = Math.max(0, Math.min(1, probability));
+  }
+
+  /**
+   * Drive-In Disaster: when enabled, an unfulfilled TOILET need on a movie-goer causes them to
+   * bail on the show (drive to exit). Must be paired with setOnParkerEarlyExit so the vehicle
+   * side can actually end the parking stay.
+   */
+  setUnfulfilledToiletEndsStay(enabled: boolean): void {
+    this.unfulfilledToiletEndsStay = enabled;
+  }
+
+  /**
+   * Wire a callback that ends a parker's stay (unreserves the spot, drives the car out, and zeroes
+   * their parker score). Used by the unfulfilled-toilet-ends-stay path.
+   */
+  setOnParkerEarlyExit(fn: ((vehicleId: string) => void) | null): void {
+    this.onParkerEarlyExit = fn;
   }
 
   /**

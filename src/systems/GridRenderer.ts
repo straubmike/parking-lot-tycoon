@@ -256,8 +256,102 @@ export class GridRenderer {
     });
   }
 
+  /** Serialized / pathfinding fence color — must stay in sync with PathfindingUtilities. */
+  static readonly FENCE_SEGMENT_COLOR = 0xff0000;
+
+  private static readonly CHAIN_LINK_HEIGHT_PX = 35;
+  private static readonly CHAIN_MESH_STEP_PX = 3.5;
+  /** Division span for each crosslink wire; 1 = adjacent points, 2 = skip one, etc. */
+  private static readonly CHAIN_MESH_SPAN = 2;
+
   /**
-   * Draw border segments (curbs, fences, lane lines)
+   * Preview or world: chain-link fence along one tile edge (isometric), extruded ~70px in screen space.
+   */
+  static drawChainLinkFenceOnEdge(
+    graphics: Phaser.GameObjects.Graphics,
+    cellX: number,
+    cellY: number,
+    edge: number,
+    gridOffsetX: number,
+    gridOffsetY: number,
+    options?: { ghost?: boolean }
+  ): void {
+    const coords = this.getBorderSegmentCoords(cellX, cellY, edge, gridOffsetX, gridOffsetY);
+    this.drawChainLinkFenceSegment(
+      graphics,
+      coords.startX,
+      coords.startY,
+      coords.endX,
+      coords.endY,
+      options?.ghost === true
+    );
+  }
+
+  /**
+   * Draw chain-link pattern between two screen points (tile edge baseline).
+   */
+  static drawChainLinkFenceSegment(
+    graphics: Phaser.GameObjects.Graphics,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    isGhost: boolean
+  ): void {
+    const a = isGhost ? 0.42 : 1;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-3) return;
+
+    // In 2:1 isometric projection, world-vertical (Z axis) maps to pure screen -Y.
+    // Extrude the fence straight up in screen space so posts stand truly vertical,
+    // regardless of whether the edge is a row or column border.
+    const h = GridRenderer.CHAIN_LINK_HEIGHT_PX;
+    const bx0 = startX;
+    const by0 = startY;
+    const bx1 = endX;
+    const by1 = endY;
+    const ux0 = bx0;
+    const uy0 = by0 - h;
+    const ux1 = bx1;
+    const uy1 = by1 - h;
+
+    graphics.lineStyle(1, 0x9e9e9e, 0.55 * a);
+    graphics.lineBetween(bx0, by0, bx1, by1);
+    graphics.lineStyle(1, 0xcfcfcf, 0.5 * a);
+    graphics.lineBetween(ux0, uy0, ux1, uy1);
+
+    const step = GridRenderer.CHAIN_MESH_STEP_PX;
+    const span = GridRenderer.CHAIN_MESH_SPAN;
+    const nSeg = Math.max(span + 1, Math.ceil(len / step));
+    for (let i = 0; i + span <= nSeg; i++) {
+      const t0 = i / nSeg;
+      const t1 = (i + span) / nSeg;
+      const b0x = bx0 + (bx1 - bx0) * t0;
+      const b0y = by0 + (by1 - by0) * t0;
+      const b1x = bx0 + (bx1 - bx0) * t1;
+      const b1y = by0 + (by1 - by0) * t1;
+      const tp0x = b0x;
+      const tp0y = b0y - h;
+      const tp1x = b1x;
+      const tp1y = b1y - h;
+      const wireCol = i % 2 === 0 ? 0x8a8a8a : 0x6a6a6a;
+      graphics.lineStyle(1, wireCol, 0.88 * a);
+      graphics.lineBetween(b0x, b0y, tp1x, tp1y);
+      graphics.lineBetween(b1x, b1y, tp0x, tp0y);
+    }
+
+    // Endpoint posts only — these are the corners of the extruded rectangle.
+    graphics.lineStyle(2, 0x4a4a4a, 0.92 * a);
+    graphics.lineBetween(bx0, by0, bx0, by0 - h);
+    graphics.lineBetween(bx1, by1, bx1, by1 - h);
+  }
+
+  /**
+   * Draw flat border segments (curbs, lane lines) into a single shared Graphics object.
+   * Fence segments are skipped here because they are tall extruded chain-link meshes that
+   * must sort against ploppables by screen-Y; see `drawFences` below.
    */
   static drawLines(
     gridManager: GridManager,
@@ -268,43 +362,76 @@ export class GridRenderer {
     gridOffsetY: number
   ): void {
     graphics.clear();
-    
-    // Track which segments we've drawn by their actual screen coordinates to avoid duplicates
+
     const drawnSegments = new Set<string>();
-    
-    // Iterate through all border segments and draw them
     const borderSegments = gridManager.getAllBorderSegments();
     borderSegments.forEach((color, segmentKey) => {
+      if (color === GridRenderer.FENCE_SEGMENT_COLOR) return;
+
       const [cellXStr, cellYStr, edgeStr] = segmentKey.split(',');
       const cellX = parseInt(cellXStr, 10);
       const cellY = parseInt(cellYStr, 10);
       const edge = parseInt(edgeStr, 10);
-      
-      // Get the screen coordinates for this border segment
+
       const coords = this.getBorderSegmentCoords(cellX, cellY, edge, gridOffsetX, gridOffsetY);
-      
-      // Create a unique key based on the actual line coordinates (rounded to avoid floating point issues)
-      // This handles deduplication when the same edge is stored from adjacent cells
       const coordKey = `${Math.round(coords.startX)},${Math.round(coords.startY)}-${Math.round(coords.endX)},${Math.round(coords.endY)}`;
       const reverseCoordKey = `${Math.round(coords.endX)},${Math.round(coords.endY)}-${Math.round(coords.startX)},${Math.round(coords.startY)}`;
-      
-      // Skip if we've already drawn this segment (check both directions)
-      if (drawnSegments.has(coordKey) || drawnSegments.has(reverseCoordKey)) {
-        return;
-      }
-      
-      // Mark as drawn
+      if (drawnSegments.has(coordKey) || drawnSegments.has(reverseCoordKey)) return;
       drawnSegments.add(coordKey);
-      
-      // Draw the line segment
+
       graphics.lineStyle(3, color, 1);
-      graphics.lineBetween(
+      graphics.lineBetween(coords.startX, coords.startY, coords.endX, coords.endY);
+    });
+  }
+
+  /**
+   * Draw fence segments, each into its own Graphics object, depth-sorted by the
+   * segment's lowest screen-Y point (matching the bottom-center origin scheme used
+   * by ploppable sprites). The caller supplies `acquireGraphics(coordKey, depth)`
+   * which is responsible for creating / caching one Graphics per segment; the
+   * returned set of active coord keys lets the caller destroy stale graphics.
+   */
+  static drawFences(
+    gridManager: GridManager,
+    acquireGraphics: (coordKey: string, depth: number) => Phaser.GameObjects.Graphics,
+    gridOffsetX: number,
+    gridOffsetY: number
+  ): Set<string> {
+    const activeKeys = new Set<string>();
+    const drawnSegments = new Set<string>();
+    const borderSegments = gridManager.getAllBorderSegments();
+    borderSegments.forEach((color, segmentKey) => {
+      if (color !== GridRenderer.FENCE_SEGMENT_COLOR) return;
+
+      const [cellXStr, cellYStr, edgeStr] = segmentKey.split(',');
+      const cellX = parseInt(cellXStr, 10);
+      const cellY = parseInt(cellYStr, 10);
+      const edge = parseInt(edgeStr, 10);
+
+      const coords = this.getBorderSegmentCoords(cellX, cellY, edge, gridOffsetX, gridOffsetY);
+      const coordKey = `${Math.round(coords.startX)},${Math.round(coords.startY)}-${Math.round(coords.endX)},${Math.round(coords.endY)}`;
+      const reverseCoordKey = `${Math.round(coords.endX)},${Math.round(coords.endY)}-${Math.round(coords.startX)},${Math.round(coords.startY)}`;
+      if (drawnSegments.has(coordKey) || drawnSegments.has(reverseCoordKey)) return;
+      drawnSegments.add(coordKey);
+
+      // Depth = "lowest point of the edge on screen" (= largest screen-Y), matched
+      // to the same `3 + y * 0.0001` scheme used by ploppables so rows interleave.
+      const bottomY = Math.max(coords.startY, coords.endY);
+      const depth = 3 + bottomY * 0.0001;
+
+      const g = acquireGraphics(coordKey, depth);
+      g.clear();
+      GridRenderer.drawChainLinkFenceSegment(
+        g,
         coords.startX,
         coords.startY,
         coords.endX,
-        coords.endY
+        coords.endY,
+        false
       );
+      activeKeys.add(coordKey);
     });
+    return activeKeys;
   }
 
   /**

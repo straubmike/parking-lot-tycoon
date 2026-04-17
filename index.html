@@ -34,6 +34,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            /* Hidden until MainMenuScene is ready — avoids an empty Phaser canvas flash on load */
+            visibility: hidden;
         }
         
         #game-container canvas {
@@ -631,7 +633,7 @@
             <div class="button-container">
                 <button class="color-button" data-color="ffff00" data-name="Lane Line" data-description="Vehicles can cross these lines but will always try to drive on the right." style="background-color: #ffff00;"></button>
                 <button class="color-button" data-color="808080" data-name="Curb" data-description="Vehicles cannot cross these lines, but pedestrians can." style="background-color: #808080;"></button>
-                <button class="color-button" data-color="ff0000" data-name="Fence" data-description="Neither vehicles nor pedestrians can cross these." style="background-color: #ff0000;"></button>
+                <button class="color-button" data-color="ff0000" data-name="Fence" data-description="Neither vehicles nor pedestrians can cross these." style="background-color: #3a3a3a; font-size: 22px; line-height: 1;" title="Fence">⛓️</button>
             </div>
             
             <div class="section-title">Ploppables</div>
