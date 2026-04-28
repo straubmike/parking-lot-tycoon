@@ -80,6 +80,7 @@ export class GridEditorController {
   }
 
   init(): void {
+    this.domAbort?.abort();
     this.domAbort = new AbortController();
     const domSignal = this.domAbort.signal;
     this.setupCamera();
@@ -800,6 +801,7 @@ export class GridEditorController {
             orientationType: 'A',
             passable: passable ?? true,
             parkingSpotOrientation: spotOrientation,
+            reserved: parkingSpot.reserved,
           };
           gridManager.setCellData(gridX, gridY, { ploppable: parkingMeter });
           this.ctx.redrawGrid();
@@ -1068,6 +1070,8 @@ export class GridEditorController {
     const selectionDescription = document.getElementById('selection-description');
     const selectionInstructions = document.getElementById('selection-instructions');
     const rateInputContainer = document.getElementById('selection-rate-input-container');
+    const meterRateLabel = document.getElementById('meter-rate-label');
+    const boothRateLabel = document.getElementById('booth-rate-label');
     const meterRateInput = document.getElementById('meter-rate-input') as HTMLInputElement;
     const boothRateInput = document.getElementById('booth-rate-input') as HTMLInputElement;
     const setPrice = (text: string) => {
@@ -1075,6 +1079,10 @@ export class GridEditorController {
         selectionPrice.textContent = text;
         selectionPrice.style.display = text ? 'block' : 'none';
       }
+    };
+    const formatRateUnit = (billingMinutes: number): string => {
+      if (billingMinutes === 60) return '$ per hour';
+      return `$ per ${billingMinutes} min`;
     };
     if (this.isVehicleSpawnerMode) {
       setPrice('');
@@ -1131,6 +1139,10 @@ export class GridEditorController {
         if ((this.selectedPloppableType === 'Parking Meter' || this.selectedPloppableType === 'Parking Booth') && rateInputContainer && meterRateInput && boothRateInput) {
           rateInputContainer.style.display = 'block';
           const parkingTimer = ParkingTimerSystem.getInstance();
+          const meterUnit = formatRateUnit(parkingTimer.getMeterBillingIntervalMinutes());
+          const boothUnit = formatRateUnit(parkingTimer.getBoothBillingIntervalMinutes());
+          if (meterRateLabel) meterRateLabel.textContent = `Meter Rate (${meterUnit}):`;
+          if (boothRateLabel) boothRateLabel.textContent = `Booth Rate (${boothUnit}):`;
           meterRateInput.value = parkingTimer.getMeterParkingRate().toString();
           boothRateInput.value = parkingTimer.getBoothParkingRate().toString();
         } else if (rateInputContainer) rateInputContainer.style.display = 'none';
@@ -1417,8 +1429,17 @@ export class GridEditorController {
       const importInput = document.getElementById('import-input') as HTMLInputElement;
       if (exportButton) exportButton.addEventListener('click', () => this.exportGrid(), { signal });
       if (importButton && importInput) {
-        importButton.addEventListener('click', () => importInput.click(), { signal });
+        let pickerOpening = false;
+        importButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (pickerOpening) return;
+          pickerOpening = true;
+          importInput.click();
+          window.setTimeout(() => { pickerOpening = false; }, 1000);
+        }, { signal });
         importInput.addEventListener('change', (e) => {
+          pickerOpening = false;
           const target = e.target as HTMLInputElement;
           const file = target.files?.[0];
           if (file) this.importGrid(file);

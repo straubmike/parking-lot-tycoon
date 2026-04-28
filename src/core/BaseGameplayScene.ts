@@ -4,7 +4,14 @@ import { GridManager } from './GridManager';
 import { GridRenderer } from '@/systems/GridRenderer';
 import { PloppableManager } from '@/systems/PloppableManager';
 import { SpawnerManager } from '@/managers/SpawnerManager';
-import { EntityRenderer, VEHICLE_TEXTURE_UP, VEHICLE_VARIANTS, PLOPPABLE_SPRITES } from '@/renderers/EntityRenderer';
+import {
+  EntityRenderer,
+  VEHICLE_TEXTURE_UP,
+  VEHICLE_VARIANTS,
+  PLOPPABLE_SPRITES,
+  ISO_ENTITY_DEPTH_BASE,
+  ISO_ENTITY_DEPTH_Y_FACTOR,
+} from '@/renderers/EntityRenderer';
 import { PathfindingUtilities } from '@/utils/PathfindingUtilities';
 import { VehicleSystem } from '@/systems/VehicleSystem';
 import { PedestrianSystem } from '@/systems/PedestrianSystem';
@@ -68,6 +75,8 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   protected showPedestrianTargetMarkers: boolean = false;
 
   private statsUiAbort: AbortController | null = null;
+  private didShutdown: boolean = false;
+  private fatalUpdateError: unknown = null;
 
   constructor(config: string | Phaser.Types.Scenes.SettingsConfig, gridWidth: number, gridHeight?: number) {
     super(config);
@@ -86,11 +95,19 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.didShutdown = false;
+    this.fatalUpdateError = null;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.shutdown, this);
     setGameUIVisibility(true);
     // Allow scene data to override grid dimensions (e.g. from menu when starting a challenge)
     const data = this.scene.settings.data as Record<string, unknown> | undefined;
     if (data && typeof data.gridWidth === 'number') this.gridWidth = data.gridWidth;
     if (data && typeof data.gridHeight === 'number') this.gridHeight = data.gridHeight;
+    this.permanentLabels = [];
+    this.vehicleSpawnerLabels = [];
+    this.ploppableLabels = [];
+    this.vehicleSpritePool = [];
     // Initialize grid manager
     this.gridManager = new GridManager(this.gridWidth, this.gridHeight);
     
@@ -117,8 +134,16 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    if (this.didShutdown) return;
+    this.didShutdown = true;
+    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    this.events.off(Phaser.Scenes.Events.DESTROY, this.shutdown, this);
     this.statsUiAbort?.abort();
     this.statsUiAbort = null;
+    document.getElementById('runtime-error-overlay')?.remove();
+    this.clearLabels();
+    this.vehicleSpritePool.forEach(sprite => sprite.destroy());
+    this.vehicleSpritePool = [];
     for (const g of this.fenceGraphicsByKey.values()) {
       g.destroy();
     }
@@ -449,18 +474,55 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
    * Update loop - called by Phaser
    */
   update(_time: number, delta: number): void {
-    // Update central game systems (time, rating triggers, etc.)
-    GameSystems.update(delta, this.gridManager, this.gridWidth, this.gridHeight);
-    
-    // Entity systems use scaled delta so movement, spawn timers, parking, and pedestrian respawn respect game speed
-    const scaledDelta = GameSystems.time.getScaledDelta(delta);
-    this.updateEntities(scaledDelta);
-    
-    // Update UI
-    this.updateUI();
-    
-    // Render entities
-    this.renderEntities();
+    if (this.fatalUpdateError) return;
+    try {
+      // Update central game systems (time, rating triggers, etc.)
+      GameSystems.update(delta, this.gridManager, this.gridWidth, this.gridHeight);
+      
+      // Entity systems use scaled delta so movement, spawn timers, parking, and pedestrian respawn respect game speed
+      const scaledDelta = GameSystems.time.getScaledDelta(delta);
+      this.updateEntities(scaledDelta);
+      
+      // Update UI
+      this.updateUI();
+      
+      // Render entities
+      this.renderEntities();
+    } catch (err) {
+      this.fatalUpdateError = err;
+      // Freeze game-time systems so we stop mutating state after a fatal runtime error.
+      GameSystems.time.setPaused(true);
+      console.error('[Fatal] Scene update crashed; game paused.', err);
+
+      // Surface a recoverable overlay so the player can escape without refreshing.
+      if (!document.getElementById('runtime-error-overlay')) {
+        const container = document.getElementById('app-container');
+        if (container) {
+          const overlay = document.createElement('div');
+          overlay.id = 'runtime-error-overlay';
+          overlay.style.cssText =
+            'position:absolute;inset:0;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:120;color:#fff;font-family:sans-serif;';
+          overlay.innerHTML = `
+            <h2 style="margin:0 0 12px 0;font-size:22px;">Something went wrong</h2>
+            <p style="margin:0 0 18px 0;max-width:520px;text-align:center;color:#ddd;">
+              The game hit an unexpected error and paused to prevent a hard freeze. You can return to the menu.
+            </p>
+            <div style="display:flex;gap:12px;">
+              <button id="runtime-error-menu-btn" class="action-button" style="width:160px;">Back to Menu</button>
+              <button id="runtime-error-reload-btn" class="action-button" style="width:160px;">Reload Page</button>
+            </div>
+          `;
+          container.appendChild(overlay);
+          document.getElementById('runtime-error-menu-btn')?.addEventListener('click', () => {
+            overlay.remove();
+            this.scene.start('MainMenuScene');
+          });
+          document.getElementById('runtime-error-reload-btn')?.addEventListener('click', () => {
+            window.location.reload();
+          });
+        }
+      }
+    }
   }
 
   /**
@@ -725,7 +787,7 @@ export abstract class BaseGameplayScene extends Phaser.Scene {
       sprite.setPosition(params.x, params.y);
       sprite.setTexture(params.textureKey);
       sprite.setFlipX(params.flipX);
-      sprite.setDepth(1.8 + params.y * 0.0001);
+      sprite.setDepth(ISO_ENTITY_DEPTH_BASE + params.y * ISO_ENTITY_DEPTH_Y_FACTOR);
       const targetWidth = TILE_WIDTH * VEHICLE_SPRITE_SCALE * params.scaleMultiplier;
       if (sprite.width > 0) {
         sprite.setScale(targetWidth / sprite.width);

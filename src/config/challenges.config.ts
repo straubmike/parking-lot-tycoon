@@ -270,8 +270,11 @@ export const CHALLENGES: Challenge[] = [
     winConditions: [
       { type: 'min_rating', value: 80, description: 'Reach a lot rating of 80' },
       { type: 'min_parking_spots', value: 50, description: 'Place at least 50 parking spots' },
-      { type: 'profit', value: 5000, description: 'Earn $5000 profit (budget $30,000)' },
+      { type: 'profit', value: 8000, description: 'Earn $8000 profit' },
     ],
+    // Airport billing: charge per hour (instead of per 15 min) to better fit long-stay parking.
+    meterBillingIntervalMinutes: 60,
+    boothBillingIntervalMinutes: 60,
     // Traffic shape resembles RHR (night quiet, morning ramp, midday plateau, evening taper) but
     // elevated throughout — airports don't really sleep. Baseline is overridden by the schedule.
     vehicleSpawnIntervalMs: 4000,
@@ -304,7 +307,7 @@ export const CHALLENGES: Challenge[] = [
     // instead of tanking the rating and flooding the message panel.
     suppressNoSpotPenalty: true,
     meterHighParkingRateThreshold: 0, // any meter = penalty
-    boothHighParkingRateThreshold: 1,
+    boothHighParkingRateThreshold: 2, // $2/hour tolerated; penalty begins at $3/hour
     meterHighParkingRatePenaltyPerDollar: 10,
     boothHighParkingRatePenaltyPerDollar: 10,
     meterRefusalToParkThreshold: 1, // any meter = instant refusal

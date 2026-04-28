@@ -27,12 +27,15 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
   private challengeBehavior: ChallengeBehavior | null = null;
   private tools!: GridEditorController;
   private backMenuUiAbort: AbortController | null = null;
+  private initialGridAbort: AbortController | null = null;
+  private sceneActive: boolean = false;
 
   constructor() {
     super({ key: 'ChallengeScene' }, 10, 10); // gridWidth/height can be overridden by scene data
   }
 
   create(): void {
+    this.sceneActive = true;
     const data = (this.scene.settings.data || {}) as Record<string, unknown>;
     this.challengeId = (data.challengeId as string) ?? 'learning-lot';
     this.isDevMode = data.isDevMode === true;
@@ -40,9 +43,15 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
   }
 
   shutdown(): void {
+    this.sceneActive = false;
+    this.initialGridAbort?.abort();
+    this.initialGridAbort = null;
     this.tools?.dispose();
     this.backMenuUiAbort?.abort();
     this.backMenuUiAbort = null;
+    document.getElementById('game-overlay')?.remove();
+    this.challengeBehavior = null;
+    this.challengeSystem = null;
     super.shutdown();
   }
 
@@ -132,6 +141,8 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
     const meterRefusal = challenge?.meterRefusalToParkThreshold ?? 10;
     const boothRefusal = challenge?.boothRefusalToParkThreshold ?? 10;
     if (challenge) {
+      parkingTimer.setMeterBillingIntervalMinutes(challenge.meterBillingIntervalMinutes ?? 15);
+      parkingTimer.setBoothBillingIntervalMinutes(challenge.boothBillingIntervalMinutes ?? 15);
       parkingTimer.setMeterHighRatePenalty(meterThreshold, meterPenalty);
       parkingTimer.setBoothHighRatePenalty(boothThreshold, boothPenalty);
       setParkingRateConfig({
@@ -162,9 +173,13 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
 
     // Load initial grid from URL when challenge defines one (e.g. Learning Lot)
     if (challenge?.initialGridPath) {
-      fetch(challenge.initialGridPath)
+      this.initialGridAbort?.abort();
+      this.initialGridAbort = new AbortController();
+      const expectedChallengeId = this.challengeId;
+      fetch(challenge.initialGridPath, { signal: this.initialGridAbort.signal })
         .then((r) => r.text())
         .then((content) => {
+          if (!this.sceneActive || this.challengeId !== expectedChallengeId) return;
           try {
             const data = JSON.parse(content) as { vehicleSpawnerPairs?: Array<[number, number, number, number]> };
             const success = this.gridManager.deserializeGrid(content);
@@ -187,11 +202,13 @@ export class ChallengeScene extends BaseGameplayScene implements ChallengeBehavi
           console.warn('Failed to parse initial grid from', challenge.initialGridPath);
         }
       })
-      .catch(() => {
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
         console.warn('Failed to load initial grid from', challenge.initialGridPath);
       });
     } else if (this.challengeId === 'learning-lot' && !this.isDevMode) {
       this.time.delayedCall(400, () => {
+        if (!this.sceneActive || this.challengeId !== 'learning-lot') return;
         this.challengeBehavior = getChallengeBehavior(this.challengeId, this);
         if (this.challengeBehavior) this.challengeBehavior.start(this);
       });

@@ -119,6 +119,18 @@ export interface Challenge {
   meterRefusalToParkThreshold?: number;
   /** Optional: rate ($/15min) at or above which parkers refuse to reserve a BOOTH spot (regular spot, pay at exit). */
   boothRefusalToParkThreshold?: number;
+  /**
+   * Optional: billing interval size for METER payments (in game minutes).
+   * Default 15 (the current global behavior).
+   * Example: 60 = bill per hour.
+   */
+  meterBillingIntervalMinutes?: number;
+  /**
+   * Optional: billing interval size for BOOTH payments (in game minutes).
+   * Default 15 (the current global behavior).
+   * Example: 60 = bill per hour.
+   */
+  boothBillingIntervalMinutes?: number;
   /** Optional: message when parker pays but gets high-rate penalty (include emoji). */
   highParkingRatePenaltyMessage?: string;
   /** Optional: message when parker refuses to park due to rate (include emoji). Used when meter/booth-specific not set. */

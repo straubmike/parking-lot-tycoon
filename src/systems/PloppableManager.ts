@@ -2,7 +2,12 @@ import Phaser from 'phaser';
 import { TILE_WIDTH, TILE_HEIGHT } from '@/config/game.config';
 import { GridManager } from '@/core/GridManager';
 import { Ploppable, CellData } from '@/types';
-import { PLOPPABLE_SPRITES, PLOPPABLE_SPRITE_CONFIG } from '@/renderers/EntityRenderer';
+import {
+  PLOPPABLE_SPRITES,
+  PLOPPABLE_SPRITE_CONFIG,
+  ISO_ENTITY_DEPTH_BASE,
+  ISO_ENTITY_DEPTH_Y_FACTOR,
+} from '@/renderers/EntityRenderer';
 import { PassabilitySystem } from './PassabilitySystem';
 import { AppealSystem } from './AppealSystem';
 import { SafetySystem } from './SafetySystem';
@@ -448,12 +453,16 @@ export class PloppableManager {
           }
 
           const BARRIER_OFFSET_Y = 3;
+          // Booth sprite uses the booth tile bottom (large screen Y); Y-sort can put it over the barrier on
+          // orientations 0 and 3 (shared edge top-right / top-left). Bias barrier forward so both halves read as one ploppable.
+          const BARRIER_OVER_BOOTH_DEPTH = 0.06;
+          const barrierDepthBias = ori === 0 || ori === 3 ? BARRIER_OVER_BOOTH_DEPTH : 0;
           const barrierKey = PLOPPABLE_SPRITES['Booth Barrier'];
           if (barrierKey) {
             const config = PLOPPABLE_SPRITE_CONFIG['Booth Barrier'];
             const sprite = scene.add.sprite(centerX + edgeOffX, centerY + edgeOffY + BARRIER_OFFSET_Y, barrierKey);
             sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-            sprite.setDepth(3 + sprite.y * 0.0001);
+            sprite.setDepth(3 + sprite.y * 0.0001 + barrierDepthBias);
             sprite.setFlipX(flipX);
             const baseScale = TILE_WIDTH * 0.5;
             const scaleMult = config?.scaleMultiplier ?? 1;
@@ -466,7 +475,7 @@ export class PloppableManager {
             fontSize: '24px',
           });
           targetLabel.setOrigin(0.5, 0.5);
-          targetLabel.setDepth(3 + targetLabel.y * 0.0001);
+          targetLabel.setDepth(3 + targetLabel.y * 0.0001 + barrierDepthBias);
           return targetLabel;
         } else {
           // BOOTH subType - render booth emoji (handled in Type B section below)
@@ -568,7 +577,11 @@ export class PloppableManager {
         const config = PLOPPABLE_SPRITE_CONFIG[ploppable.type];
         const sprite = scene.add.sprite(posX, posY, spriteKey);
         sprite.setOrigin(config?.originX ?? 0.5, config?.originY ?? 1.0);
-        sprite.setDepth(3 + sprite.y * 0.0001);
+        const depth =
+          ploppable.type === 'Parking Meter'
+            ? ISO_ENTITY_DEPTH_BASE + sprite.y * ISO_ENTITY_DEPTH_Y_FACTOR
+            : 3 + sprite.y * 0.0001;
+        sprite.setDepth(depth);
         sprite.setFlipX(flipX);
         const baseScale = TILE_WIDTH * 0.5;
         const scaleMult = config?.scaleMultiplier ?? 1;

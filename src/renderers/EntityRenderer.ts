@@ -85,6 +85,11 @@ export const PLOPPABLE_SPRITE_CONFIG: Record<string, PloppableSpriteConfig> = {
   'Pedestrian Spawner': { originX: 0.5, originY: 1.0, scaleMultiplier: 0.15 },
 };
 
+/** Depth base for vehicles and props that must sort with them by screen Y (isometric overlap). */
+export const ISO_ENTITY_DEPTH_BASE = 1.8;
+/** Larger screen Y → slightly higher depth so nearer objects draw on top (matches vehicle sprites). */
+export const ISO_ENTITY_DEPTH_Y_FACTOR = 0.0001;
+
 /** Draw params for one vehicle sprite: position, texture, flip, and scale multiplier. */
 export interface VehicleDrawParams {
   x: number;

@@ -27,12 +27,16 @@ function getChallengeDisplayName(id: string): string {
 
 export class MainMenuScene extends Phaser.Scene {
   private menuOverlay: HTMLElement | null = null;
+  private didShutdown: boolean = false;
 
   constructor() {
     super({ key: 'MainMenuScene' });
   }
 
   create(): void {
+    this.didShutdown = false;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    this.events.once(Phaser.Scenes.Events.DESTROY, this.shutdown, this);
     setGameUIVisibility(false);
     this.buildMenuDOM();
   }
@@ -293,6 +297,10 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    if (this.didShutdown) return;
+    this.didShutdown = true;
+    this.events.off(Phaser.Scenes.Events.SHUTDOWN, this.shutdown, this);
+    this.events.off(Phaser.Scenes.Events.DESTROY, this.shutdown, this);
     document.getElementById('main-menu-overlay')?.remove();
     this.menuOverlay = null;
     setGameUIVisibility(true);

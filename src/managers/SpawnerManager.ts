@@ -139,22 +139,24 @@ export class SpawnerManager {
     explicitPairs?: Array<[number, number, number, number]>
   ): void {
     vehicleSystem.clearVehicles();
+    vehicleSystem.clearSpawnerDespawnerPairs();
 
     if (explicitPairs?.length) {
       for (const [spawnerX, spawnerY, despawnerX, despawnerY] of explicitPairs) {
         // Sanity check: a pair entry should match cellData flags on both endpoints. If the map
         // was hand-edited or predates the demolish-path fix, the pair and the cells can diverge —
-        // which manifests as cars spawning from a cell with no 🚗 indicator. Warn loudly but keep
-        // the pair (traffic is the "canonical" intent when loading a saved map).
+        // which manifests as cars spawning from a cell with no vehicle spawner indicator.
+        // In that case, trust the visible grid flags and skip the stale pair.
         const spawnerCell = gridManager.getCellData(spawnerX, spawnerY);
         const despawnerCell = gridManager.getCellData(despawnerX, despawnerY);
         if (!spawnerCell?.vehicleSpawner || !despawnerCell?.vehicleDespawner) {
           console.warn(
-            '[SpawnerManager] Loaded map has a vehicleSpawnerPairs entry without matching cellData flags:',
+            '[SpawnerManager] Skipping vehicleSpawnerPairs entry without matching cellData flags:',
             { spawner: [spawnerX, spawnerY], despawner: [despawnerX, despawnerY],
               spawnerFlagPresent: !!spawnerCell?.vehicleSpawner,
               despawnerFlagPresent: !!despawnerCell?.vehicleDespawner }
           );
+          continue;
         }
         vehicleSystem.addSpawnerDespawnerPair({
           spawnerX,

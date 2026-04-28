@@ -210,6 +210,12 @@ export class VehicleSystem {
     return [...this.spawnerDespawnerPairs];
   }
 
+  /** Clear all registered spawner pairs and their spawn timers. */
+  clearSpawnerDespawnerPairs(): void {
+    this.spawnerDespawnerPairs = [];
+    this.spawnTimers.clear();
+  }
+
   /** Check if a Parking Booth exists anywhere on the grid. */
   private hasBoothInLot(): boolean {
     for (let x = 0; x < this.gridWidth; x++) {

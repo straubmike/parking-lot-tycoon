@@ -11,6 +11,7 @@ import { getParkingRateConfig } from '@/config/parkingRateConfig';
  */
 export class ParkingTimerSystem {
   private static instance: ParkingTimerSystem;
+  private static readonly DEFAULT_BILLING_INTERVAL_SECONDS = 15; // 15 game minutes (1 game min = 1 real sec)
   
   // Track parking start time for each vehicle
   // Key: vehicleId, Value: parking start time (real-time seconds)
@@ -19,6 +20,10 @@ export class ParkingTimerSystem {
   // Separate rates for meters (pay-at-spot) vs booths (pay-at-exit)
   private meterParkingRate: number = 1;
   private boothParkingRate: number = 1;
+
+  // Billing interval size (seconds = game minutes). Default is per 15 minutes.
+  private meterBillingIntervalSeconds: number = ParkingTimerSystem.DEFAULT_BILLING_INTERVAL_SECONDS;
+  private boothBillingIntervalSeconds: number = ParkingTimerSystem.DEFAULT_BILLING_INTERVAL_SECONDS;
   
   // High-rate penalty: when parkingRate exceeds threshold, parkers lose rating
   // Separate for meters (pay-at-spot) vs booths (pay-at-exit)
@@ -41,7 +46,7 @@ export class ParkingTimerSystem {
   
   /**
    * Set the meter parking rate (pay-at-spot).
-   * @param rate - Rate per 15 game minutes (must be >= 1, in $1 increments)
+   * @param rate - Rate per billing interval (must be >= 1, in $1 increments)
    */
   setMeterParkingRate(rate: number): void {
     this.meterParkingRate = Math.max(1, Math.floor(rate));
@@ -49,10 +54,28 @@ export class ParkingTimerSystem {
 
   /**
    * Set the booth parking rate (pay-at-exit).
-   * @param rate - Rate per 15 game minutes (must be >= 1, in $1 increments)
+   * @param rate - Rate per billing interval (must be >= 1, in $1 increments)
    */
   setBoothParkingRate(rate: number): void {
     this.boothParkingRate = Math.max(1, Math.floor(rate));
+  }
+
+  /**
+   * Set the meter billing interval (pay-at-spot), in game minutes.
+   * 1 game minute = 1 real second, so we store as seconds.
+   */
+  setMeterBillingIntervalMinutes(minutes: number): void {
+    const m = Math.max(1, Math.floor(minutes));
+    this.meterBillingIntervalSeconds = m;
+  }
+
+  /**
+   * Set the booth billing interval (pay-at-exit), in game minutes.
+   * 1 game minute = 1 real second, so we store as seconds.
+   */
+  setBoothBillingIntervalMinutes(minutes: number): void {
+    const m = Math.max(1, Math.floor(minutes));
+    this.boothBillingIntervalSeconds = m;
   }
 
   /**
@@ -67,6 +90,16 @@ export class ParkingTimerSystem {
    */
   getBoothParkingRate(): number {
     return this.boothParkingRate;
+  }
+
+  /** Get the meter billing interval (game minutes). */
+  getMeterBillingIntervalMinutes(): number {
+    return this.meterBillingIntervalSeconds;
+  }
+
+  /** Get the booth billing interval (game minutes). */
+  getBoothBillingIntervalMinutes(): number {
+    return this.boothBillingIntervalSeconds;
   }
 
   /** @deprecated Use setMeterParkingRate/setBoothParkingRate. Sets both to the same value. */
@@ -173,7 +206,9 @@ export class ParkingTimerSystem {
   ): { fee: number; vehicleId: string } {
     const parkingTimeSeconds = this.parkingStartTimes.get(vehicleId) || 0;
     this.parkingStartTimes.delete(vehicleId);
-    const intervals = Math.ceil(parkingTimeSeconds / 15);
+    const intervalSeconds =
+      paymentType === 'meter' ? this.meterBillingIntervalSeconds : this.boothBillingIntervalSeconds;
+    const intervals = Math.ceil(parkingTimeSeconds / intervalSeconds);
     const rate = paymentType === 'meter' ? this.meterParkingRate : this.boothParkingRate;
     const fee = intervals * rate;
     EconomySystem.getInstance().earn(fee);
@@ -214,6 +249,8 @@ export class ParkingTimerSystem {
     this.parkingStartTimes.clear();
     this.meterParkingRate = 1;
     this.boothParkingRate = 1;
+    this.meterBillingIntervalSeconds = ParkingTimerSystem.DEFAULT_BILLING_INTERVAL_SECONDS;
+    this.boothBillingIntervalSeconds = ParkingTimerSystem.DEFAULT_BILLING_INTERVAL_SECONDS;
     this.meterHighParkingRateThreshold = 5;
     this.meterHighParkingRatePenaltyPerDollar = 2;
     this.boothHighParkingRateThreshold = 5;
